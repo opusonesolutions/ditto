@@ -10,6 +10,7 @@ import json
 import numpy as np
 import logging
 import time
+import operator
 
 #Ditto imports #
 
@@ -50,7 +51,7 @@ class reader:
         ## Node ###########
         NodeID = SynergiData.SynergiDictionary['Node']['NodeId']
 
-    ###### Transformer ##################
+        ###### Transformer ##################
         TransformerId = SynergiData.SynergiDictionary['InstPrimaryTransformers']['UniqueDeviceId']
         TransformerSectionId = SynergiData.SynergiDictionary['InstPrimaryTransformers']['SectionId']
         TransformerType = SynergiData.SynergiDictionary['InstPrimaryTransformers']['TransformerType']
@@ -65,9 +66,11 @@ class reader:
         TransformerRatedKva = SynergiData.SynergiDictionary['DevTransformers']['TransformerRatedKva']
         PercentImpedance = SynergiData.SynergiDictionary['DevTransformers']['PercentImpedance']
         PercentResistance = SynergiData.SynergiDictionary['DevTransformers']['PercentResistance']
+        HighVoltageConnectionCode = SynergiData.SynergiDictionary['DevTransformers']['HighVoltageConnectionCode']
+        LowVoltageConnectionCode = SynergiData.SynergiDictionary['DevTransformers']['LowVoltageConnectionCode']
 
 
-        ## Line ###########
+        ########## Line #####################
         LineID=SynergiData.SynergiDictionary['InstSection']['SectionId']
         LineLength=SynergiData.SynergiDictionary['InstSection']['SectionLength_MUL']
         PhaseConductorID=SynergiData.SynergiDictionary['InstSection']['PhaseConductorId']
@@ -76,7 +79,8 @@ class reader:
         LineFeederId=SynergiData.SynergiDictionary['InstSection']['FeederId']
         FromNodeId=SynergiData.SynergiDictionary['InstSection']['FromNodeId']
         ToNodeId = SynergiData.SynergiDictionary['InstSection']['ToNodeId']
-
+        IsFromEndOpen = SynergiData.SynergiDictionary['InstSection']['IsFromEndOpen']
+        IsToEndOpen = SynergiData.SynergiDictionary['InstSection']['IsToEndOpen']
 
         ## Wires ###########
         CableGMR=SynergiData.SynergiDictionary['DevConductors']['CableGMR_MUL']
@@ -99,20 +103,20 @@ class reader:
         Phase3Kvar = SynergiData.SynergiDictionary['Loads']['Phase3Kvar']
 
         ## Capacitors ################
-        CapacitorName = SynergiData.SynergiDictionary['InstCapacitors01']['UniqueDeviceId']
-        CapacitorVoltage = SynergiData.SynergiDictionary['InstCapacitors01']['RatedKv']
-        CapacitorConnectionType = SynergiData.SynergiDictionary['InstCapacitors01']['ConnectionType']
-        CapacitorTimeDelaySec = SynergiData.SynergiDictionary['InstCapacitors01']['TimeDelaySec']
-        CapacitorPrimaryControlMode = SynergiData.SynergiDictionary['InstCapacitors01']['PrimaryControlMode']
-        CapacitorModule1CapSwitchCloseValue = SynergiData.SynergiDictionary['InstCapacitors01']['Module1CapSwitchCloseValue']
-        CapacitorModule1CapSwitchTripValue = SynergiData.SynergiDictionary['InstCapacitors01']['Module1CapSwitchTripValue']
-        CapacitorPTRatio = SynergiData.SynergiDictionary['InstCapacitors01']['CapacitorPTRatio']
-        CapacitorCTRating = SynergiData.SynergiDictionary['InstCapacitors01']['CapacitorCTRating']
-        CapacitorSectionId = SynergiData.SynergiDictionary['InstCapacitors01']['SectionId']
+        CapacitorName = SynergiData.SynergiDictionary['InstCapacitors']['UniqueDeviceId']
+        CapacitorVoltage = SynergiData.SynergiDictionary['InstCapacitors']['RatedKv']
+        CapacitorConnectionType = SynergiData.SynergiDictionary['InstCapacitors']['ConnectionType']
+        CapacitorTimeDelaySec = SynergiData.SynergiDictionary['InstCapacitors']['TimeDelaySec']
+        CapacitorPrimaryControlMode = SynergiData.SynergiDictionary['InstCapacitors']['PrimaryControlMode']
+        CapacitorModule1CapSwitchCloseValue = SynergiData.SynergiDictionary['InstCapacitors']['Module1CapSwitchCloseValue']
+        CapacitorModule1CapSwitchTripValue = SynergiData.SynergiDictionary['InstCapacitors']['Module1CapSwitchTripValue']
+        CapacitorPTRatio = SynergiData.SynergiDictionary['InstCapacitors']['CapacitorPTRatio']
+        CapacitorCTRating = SynergiData.SynergiDictionary['InstCapacitors']['CapacitorCTRating']
+        CapacitorSectionId = SynergiData.SynergiDictionary['InstCapacitors']['SectionId']
 
-        CapacitorFixedKvarPhase1 = SynergiData.SynergiDictionary['InstCapacitors01']['FixedKvarPhase1']
-        CapacitorFixedKvarPhase2 = SynergiData.SynergiDictionary['InstCapacitors01']['FixedKvarPhase2']
-        CapacitorFixedKvarPhase3 = SynergiData.SynergiDictionary['InstCapacitors01']['FixedKvarPhase3']
+        CapacitorFixedKvarPhase1 = SynergiData.SynergiDictionary['InstCapacitors']['FixedKvarPhase1']
+        CapacitorFixedKvarPhase2 = SynergiData.SynergiDictionary['InstCapacitors']['FixedKvarPhase2']
+        CapacitorFixedKvarPhase3 = SynergiData.SynergiDictionary['InstCapacitors']['FixedKvarPhase3']
 
 
         ## Regulators ###################
@@ -136,6 +140,10 @@ class reader:
         RegulatorPTRatio = SynergiData.SynergiDictionary['DevRegulators']['PTRatio']
         RegulatorCTRating = SynergiData.SynergiDictionary['DevRegulators']['CTRating']
 
+        RegulatorNearFromNode = SynergiData.SynergiDictionary['InstRegulators']['NearFromNode']
+
+
+
 
         ##### PV ##################################
         PVUniqueDeviceId = SynergiData.SynergiDictionary['InstLargeCust']['UniqueDeviceId']
@@ -154,84 +162,159 @@ class reader:
         NFeeder=len(FeederId)
 
         ## Converting Node into Ditto##############
-        N = len(NodeID)
+       # N = len(NodeID)
+        ## Delete the blank spaces in the phases
+        SectionPhases01=[]
+        tt=0
+        for obj in SectionPhases:
+            SectionPhases_thisline = list(SectionPhases[tt])
+            SectionPhases_thisline1 = [s.encode('ascii') for s in SectionPhases_thisline]
+            SectionPhases_thisline2 = filter(str.strip, SectionPhases_thisline1)
+            SectionPhases01.append(SectionPhases_thisline2)
+            tt=tt+1
+
         i = 0
-        for obj in NodeID[0:N - 1]:
+        for obj in NodeID:
             api_node = Node(model)
             api_node.name = NodeID[i]
-            print(NodeID[i])
-            i = i + 1
+            #print(NodeID[i])
+
+            if NodeID[i]=='mikilua 2 tsf':
+                api_node.bustype='SWING'
+
+            ## Search the nodes in FromNodeID
+            tt = 0
+            CountFrom=[]
+            for obj in FromNodeId:
+                Flag = (NodeID[i] == FromNodeId[tt])
+                if Flag == True:
+                    CountFrom.append(tt)
+                    ttt = ttt + 1
+                tt = tt + 1
+
+
+            ## Search in the nodes in ToNodeID
+            tt = 0
+            CountTo = []
+            for obj in ToNodeId:
+                Flag = (NodeID[i] == ToNodeId[tt])
+                if Flag == True:
+                    CountTo.append(tt)
+                tt = tt + 1
+
+            PotentialNodePhases=[]
+            ttt=0
+            if CountFrom:
+                for obj in CountFrom:
+                    PotentialNodePhases.append(SectionPhases01[CountFrom[ttt]])
+                    tt=tt+1
+                    ttt=ttt+1
+
+            if CountTo:
+                ttt=0
+                for obj in CountTo:
+                    PotentialNodePhases.append(SectionPhases01[CountTo[ttt]])
+                    ttt = ttt + 1
+
+            PhaseLength=[]
+            tt=0
+            for obj in PotentialNodePhases:
+                PhaseLength.append(len(PotentialNodePhases[tt]))
+                tt=tt+1
+
+            index, value = max(enumerate(PhaseLength), key=operator.itemgetter(1))
+
+
+            #SectionPhases_thisline = list(PotentialNodePhases[index])
+            #SectionPhases_thisline1 = [s.encode('ascii') for s in SectionPhases_thisline]
+            #SectionPhases_thisline2 = filter(str.strip, SectionPhases_thisline1)
+
+            #SectionPhases_thisline = [s.decode('utf-8') for s in SectionPhases_thisline2]
+            api_node.phases=PotentialNodePhases[index]
+
+            i=i+1
 
 
         ## Converting Line into Ditto###############
-        Nline=len(LineID)
-        i=138
-        for obj in LineID[138:Nline]:
-            api_line = Line(model)
-            api_line.name = LineID[i]
-            api_line.length=LineLength[i]*0.3048
-            api_line.from_element=FromNodeId[i]
-            api_line.to_element=ToNodeId[i]
+        i=0
+        for obj in LineID:
 
-            ### Line Phases##################
-            SectionPhases_thisline=list(SectionPhases[i])
-            SectionPhases_thisline1=[s.encode('ascii') for s in SectionPhases_thisline]
-            SectionPhases_thisline2=filter(str.strip,SectionPhases_thisline1)
+            ## Exclude the line with regulators
+            ii=0
+            LineFlag=0
+            for obj in RegulatrorSectionId:
+                if LineID[i]==RegulatrorSectionId[ii]:
+                    LineFlag=1
+                ii=ii+1
 
-            SectionPhases_thisline=[s.decode('utf-8') for s in SectionPhases_thisline2]
-            NPhase=len(SectionPhases_thisline)
+            if LineFlag==0:
+                if IsToEndOpen[i] ==0 and IsFromEndOpen[i]==0:
+                    api_line = Line(model)
+                    api_line.name = LineID[i]
+                    api_line.length=LineLength[i]*0.3048
+                    api_line.from_element=FromNodeId[i]
+                    api_line.to_element=ToNodeId[i]
 
-            ## The wires belong to this line
-            t=0
-            wires = []
-            for obj in SectionPhases_thisline:
-                api_wire=Wire(model)
-                api_wire.phase=SectionPhases_thisline[t]
-                wires.append(api_wire)
-                t=t+1
+                    ### Line Phases##################
+                    SectionPhases_thisline=list(SectionPhases[i])
+                    SectionPhases_thisline1=[s.encode('ascii') for s in SectionPhases_thisline]
+                    SectionPhases_thisline2=filter(str.strip,SectionPhases_thisline1)
 
-            ## Calculating the impedance matrix of this line
+                    SectionPhases_thisline=[s.decode('utf-8') for s in SectionPhases_thisline2]
+                    NPhase=len(SectionPhases_thisline)
 
-            PhaseConductorIDthisline=PhaseConductorID[i]
+                    ## The wires belong to this line
+                    t=0
+                    wires = []
+                    for obj in SectionPhases_thisline:
+                        api_wire=Wire(model)
+                        api_wire.phase=SectionPhases_thisline[t]
+                        wires.append(api_wire)
+                        t=t+1
 
-            tt=0
-            Count=0
-            for obj in ConductorName:
-                Flag=(PhaseConductorIDthisline==ConductorName[tt])
-                if Flag==True:
-                    Count=tt
-                tt=tt+1
+                    ## Calculating the impedance matrix of this line
 
-            r1 = PosSequenceResistance_PerLUL[Count]
-            x1 = PosSequenceReactance_PerLUL[Count]
-            r0 = ZeroSequenceResistance_PerLUL[Count]
-            x0 = ZeroSequenceReactance_PerLUL[Count]
+                    PhaseConductorIDthisline=PhaseConductorID[i]
 
-            coeff = 10 ** -3
-            if NPhase==2:
-                impedance_matrix = [[coeff * complex(float(r0), float(x0))]]
-            if NPhase==3:
-                a = coeff * complex(2 * float(r1) + float(r0),
-                                    2 * float(x1) + float(x0))
-                b = coeff * complex(float(r0) - float(r1),
-                                    float(x0) - float(x1))
-                impedance_matrix = [[a, b], [b, a]]
+                    tt=0
+                    Count=0
+                    for obj in ConductorName:
+                        Flag=(PhaseConductorIDthisline==ConductorName[tt])
+                        if Flag==True:
+                            Count=tt
+                        tt=tt+1
 
-            if NPhase==4:
-                a = coeff * complex(2 * float(r1) + float(r0),
-                                    2 * float(x1) + float(x0))
-                b = coeff * complex(float(r0) - float(r1),
-                                    float(x0) - float(x1))
-                impedance_matrix = [[a, b, b], [b, a, b], [b, b, a]]
+                    r1 = PosSequenceResistance_PerLUL[Count]
+                    x1 = PosSequenceReactance_PerLUL[Count]
+                    r0 = ZeroSequenceResistance_PerLUL[Count]
+                    x0 = ZeroSequenceReactance_PerLUL[Count]
+
+                    coeff = 10 ** -3
+                    if NPhase==2:
+                        impedance_matrix = [[coeff * complex(float(r0), float(x0))]]
+                    if NPhase==3:
+                        a = coeff * complex(2 * float(r1) + float(r0),
+                                            2 * float(x1) + float(x0))
+                        b = coeff * complex(float(r0) - float(r1),
+                                            float(x0) - float(x1))
+                        impedance_matrix = [[a, b], [b, a]]
+
+                    if NPhase==4:
+                        a = coeff * complex(2 * float(r1) + float(r0),
+                                            2 * float(x1) + float(x0))
+                        b = coeff * complex(float(r0) - float(r1),
+                                            float(x0) - float(x1))
+                        impedance_matrix = [[a, b, b], [b, a, b], [b, b, a]]
 
 
-            api_line.wires = wires
-            api_line.impedance_matrix = impedance_matrix
+                    api_line.wires = wires
+                    api_line.impedance_matrix = impedance_matrix
             i=i+1
 
      ## Converting transformer  into Ditto###############
-        i=0
-        for obj in TransformerId:
+        i=2
+       # for obj in TransformerId[2]:
+        if i==2:
             api_transformer=PowerTransformer(model)
             api_transformer.name=TransformerId[i]
 
@@ -241,22 +324,17 @@ class reader:
             TransformerTypethisone01 = TransformerTypethisone.encode('ascii')
             TransformerSectionIdthisone01 = TransformerSectionIdthisone.encode('ascii')
 
-            Flag = (TransformerSectionIdthisone01 == 'Section_0001')
-            if Flag == True:
-                api_transformer.from_element = 'network_node'
-                api_transformer.to_element = 'nsourcebus'
 
-            else:
             # Find out the from and to elements
-                tt = 0
-                Count = 0
-                for obj in LineID:
-                    Flag = (TransformerSectionId[i] == LineID[tt])
-                    if Flag == True:
-                        Count = tt
-                    tt = tt + 1
-                api_transformer.to_element = ToNodeId[Count]
-                api_transformer.from_element = FromNodeId[Count]
+            tt = 0
+            Count = 0
+            for obj in LineID:
+                Flag = (TransformerSectionId[i] == LineID[tt])
+                if Flag == True:
+                    Count = tt
+                tt = tt + 1
+            api_transformer.to_element = ToNodeId[Count]
+            api_transformer.from_element = FromNodeId[Count]
 
             tt = 0
             Count = 0
@@ -280,9 +358,16 @@ class reader:
             Resistancethisone = (HighSideRatedKvthisone ** 2/TransformerRatedKvathisone*1000)*PercentResistancethisone/100
             Reactancethisone = (HighSideRatedKvthisone ** 2 / TransformerRatedKvathisone * 1000) * (PercentImpedancethisone-PercentResistancethisone)/100
 
-            api_transformer.impedance=complex(Resistancethisone,Reactancethisone)
+            transformerimpedance=complex(Resistancethisone, Reactancethisone)
+            api_transformer.impedance=repr(transformerimpedance)[1:-1]
 
-            i=i+1
+            ## Connection type of the transformer
+            api_transformer.connectiontype = HighVoltageConnectionCode[Count]+LowVoltageConnectionCode[Count]
+
+            ## Phase of the transformer
+            api_transformer.phases=SectionPhases[Count]
+
+            # i=i+1
 
     ## Convert load into Ditto
         N=len(LoadName)
@@ -319,7 +404,7 @@ class reader:
             i=i+1
 
 
-        ## Convert the capacitor data into Ditto
+    ## Convert the capacitor data into Ditto
 
         i=0
         for obj in CapacitorName:
@@ -328,7 +413,7 @@ class reader:
             api_cap.nominal_voltage=CapacitorVoltage[i]*1000
             api_cap.connection_type=CapacitorConnectionType[i]
             api_cap.delay=CapacitorTimeDelaySec[i]
-            api_cap.mode=CapacitorPrimaryControlMode[i]
+            api_cap.mode='VOLT'
             api_cap.low=CapacitorModule1CapSwitchCloseValue[i]
             api_cap.high=CapacitorModule1CapSwitchTripValue[i]
             api_cap.pt_ratio=CapacitorPTRatio[i]
@@ -368,8 +453,14 @@ class reader:
             api_regulator.name = RegulatorId[i]
             api_regulator.delay= RegulatorTimeDelay[i]
             api_regulator.highstep = int(RegulatorTapLimiterHighSetting[i])
-            api_regulator.lowstep=int(RegulatorTapLimiterLowSetting[i])
-            api_regulator.pt_phase=RegulagorPhases[i]
+            api_regulator.lowstep=-int(RegulatorTapLimiterLowSetting[i])
+
+            ## Regulator phases
+            RegulagorPhases_this = list(RegulagorPhases[i])
+            RegulagorPhases_this01 = [s.encode('ascii') for s in RegulagorPhases_this]
+            RegulagorPhases_this02 = filter(str.strip, RegulagorPhases_this01)
+            api_regulator.phases=''.join(RegulagorPhases_this02)
+            #api_regulator.pt_phase=RegulagorPhases[i]
 
             Flag=(RegulagorPhases[i]=='A')
             if Flag==True:
@@ -410,9 +501,138 @@ class reader:
                     Count = tt
                 tt = tt + 1
 
-            api_regulator.from_element = FromNodeId[Count]
-            api_regulator.to_element = ToNodeId[Count]
+            if RegulatorNearFromNode[i]==0:
+                RegualatorFromNodeID=ToNodeId[Count]+'_1'
+                RegualatorToNodeID = ToNodeId[Count]
+                DummyNodeID=ToNodeId[Count]+'_1'
 
+            if RegulatorNearFromNode[i]==1:
+                RegualatorFromNodeID = FromNodeId[Count]
+                RegualatorToNodeID = FromNodeId[Count]+'_1'
+                DummyNodeID = FromNodeId[Count]+'_1'
+
+            api_regulator.from_element = RegualatorFromNodeID
+            api_regulator.to_element = RegualatorToNodeID
+
+            ## Create the dummy node connecting the regulators
+            api_node = Node(model)
+            api_node.name = DummyNodeID
+            api_node.phases=SectionPhases01[Count]
+
+            ## Create a dummy line and node to put regulator in lines
+            api_line_dummy = Line(model)
+            api_line_dummy.name = LineID[Count]+'dummy'
+            api_line_dummy.length = 5 * 0.3048
+            api_line_dummy.from_element = RegualatorFromNodeID
+            api_line_dummy.to_element = RegualatorToNodeID
+
+            ### Line Phases##################
+
+            SectionPhases_thisline = SectionPhases01[Count]
+            NPhase = len(SectionPhases_thisline)
+
+            ## The wires belong to this line
+            t = 0
+            wires = []
+            for obj in SectionPhases_thisline:
+                api_wire = Wire(model)
+                api_wire.phase = SectionPhases_thisline[t]
+                wires.append(api_wire)
+                t = t + 1
+
+            ## Calculating the impedance matrix of this line
+
+            PhaseConductorIDthisline ='DUMMY'
+
+            tt = 0
+            Count_Conductor = 0
+            for obj in ConductorName:
+                Flag = (PhaseConductorIDthisline == ConductorName[tt])
+                if Flag == True:
+                    Count_Conductor = tt
+                tt = tt + 1
+
+            r1 = PosSequenceResistance_PerLUL[Count_Conductor]
+            x1 = PosSequenceReactance_PerLUL[Count_Conductor]
+            r0 = ZeroSequenceResistance_PerLUL[Count_Conductor]
+            x0 = ZeroSequenceReactance_PerLUL[Count_Conductor]
+
+            coeff = 10 ** -3
+            if NPhase == 2:
+                impedance_matrix = [[coeff * complex(float(r0), float(x0))]]
+            if NPhase == 3:
+                a = coeff * complex(2 * float(r1) + float(r0),
+                                    2 * float(x1) + float(x0))
+                b = coeff * complex(float(r0) - float(r1),
+                                    float(x0) - float(x1))
+                impedance_matrix = [[a, b], [b, a]]
+
+            if NPhase == 4:
+                a = coeff * complex(2 * float(r1) + float(r0),
+                                    2 * float(x1) + float(x0))
+                b = coeff * complex(float(r0) - float(r1),
+                                    float(x0) - float(x1))
+                impedance_matrix = [[a, b, b], [b, a, b], [b, b, a]]
+
+            api_line_dummy.wires = wires
+            api_line_dummy.impedance_matrix = impedance_matrix
+
+            ## Create a line to put regulator in lines
+            api_line = Line(model)
+            api_line.name = LineID[Count]
+            api_line.length = LineLength[Count] * 0.3048
+            api_line.from_element = FromNodeId[Count]
+            api_line.to_element = ToNodeId[Count]
+
+            ### Line Phases##################
+            SectionPhases_thisline = SectionPhases01[Count]
+            NPhase = len(SectionPhases_thisline)
+
+            ## The wires belong to this line
+            t = 0
+            wires = []
+            for obj in SectionPhases_thisline:
+                api_wire = Wire(model)
+                api_wire.phase = SectionPhases_thisline[t]
+                wires.append(api_wire)
+                t = t + 1
+
+            ## Calculating the impedance matrix of this line
+
+            PhaseConductorIDthisline = PhaseConductorID[Count]
+
+            tt = 0
+            Count_Conductor = 0
+            for obj in ConductorName:
+                Flag = (PhaseConductorIDthisline == ConductorName[tt])
+                if Flag == True:
+                    Count_Conductor = tt
+                tt = tt + 1
+
+            r1 = PosSequenceResistance_PerLUL[Count_Conductor]
+            x1 = PosSequenceReactance_PerLUL[Count_Conductor]
+            r0 = ZeroSequenceResistance_PerLUL[Count_Conductor]
+            x0 = ZeroSequenceReactance_PerLUL[Count_Conductor]
+
+            coeff = 10 ** -3
+            if NPhase == 2:
+                impedance_matrix = [[coeff * complex(float(r0), float(x0))]]
+            if NPhase == 3:
+                a = coeff * complex(2 * float(r1) + float(r0),
+                                    2 * float(x1) + float(x0))
+                b = coeff * complex(float(r0) - float(r1),
+                                    float(x0) - float(x1))
+                impedance_matrix = [[a, b], [b, a]]
+
+            if NPhase == 4:
+                a = coeff * complex(2 * float(r1) + float(r0),
+                                    2 * float(x1) + float(x0))
+                b = coeff * complex(float(r0) - float(r1),
+                                    float(x0) - float(x1))
+                impedance_matrix = [[a, b, b], [b, a, b], [b, b, a]]
+
+            api_line.wires = wires
+            api_line.impedance_matrix = impedance_matrix
             i = i + 1
 
     ##### Convert PV to Ditto###################################
