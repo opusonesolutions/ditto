@@ -38,6 +38,17 @@ class PowerTransformer(DiTToHasTraits):
         '''This parameter is a list of positional points describing the transformer - it should contain just one. The positions are objects containing elements of long, lat and elevation.''',
         default_value=None
     )
+    
+    
+    
+    #Modification: Xiangqi Zhu (Mar 2018)
+    impedance=Any(help='Impedance of this transformer', default_value=None)
+    powerrating=Any(help='the rating of this transformer', default_value=None)
+    primaryvoltage=Any(help='the primary voltage of this transformer', default_value=None)
+    secondaryvoltage=Any(help='the secondary voltage of this transformer', default_value=None)
+    connectiontype=Any(help='the connection type of this transformer', default_value=None)
+    phases=Any(help='the phases of this transformer', default_value=None)
+    
 
     #Modification: Nicolas (August 2017)
     loadloss = Float(help='Percent Losses at rated load', default_value=None)
