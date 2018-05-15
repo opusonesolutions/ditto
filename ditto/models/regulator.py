@@ -43,6 +43,11 @@ class Regulator(DiTToHasTraits):
         ''' This is a list containing one element for each winding in the voltage regulator. It describes attributes of the winding. This paramter is required to describe many compontants of the regulator. The simplest versions have two windings representing a high and low voltage.''',
         default_value=None
     )
+    
+    
+    ## Added by Xiangqi Zhu on Apr 15, 2018
+  
+    phases=Any(help=''' The phases of the regualtor''', default_value=None)
 
     #Added by Nicolas (August 2017)
     winding = Int(help='''Number of the winding of the transformer element that the RegControl is monitoring.''', default_value=None)
