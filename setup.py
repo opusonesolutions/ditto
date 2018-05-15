@@ -30,7 +30,21 @@ setup(
     url='https://github.com/NREL/ditto',
     packages=find_packages(),
     package_dir={'ditto': 'ditto'},
-    entry_points={'console_scripts': ['ditto=ditto.cli:cli']},
+    entry_points={
+        "console_scripts": ["ditto=ditto.cli:cli"],
+        "ditto.readers": [
+            "gridlabd=ditto.readers.gridlabd:GridLABDReader",
+            "opendss=ditto.readers.opendss:OpenDSSReader",
+            "cyme=ditto.readers.cyme:CymeReader",
+	    "demo=ditto.readers.demo:DemoReader"
+        ],
+        "ditto.writers": [
+            "gridlabd=ditto.writers.gridlabd:GridLABDWriter",
+            "opendss=ditto.writers.opendss:OpenDSSWriter",
+            "cyme=ditto.writers.cyme:CymeWriter",
+            "demo=ditto.writers.demo:DemoWriter"
+        ],
+    },
     include_package_data=True,
     license="BSD license",
     zip_safe=False,
@@ -51,19 +65,21 @@ setup(
         "croniter",
         "funcsigs",
         "future",
-        "fuzzywuzzy",
         "jinja2",
         "lxml",
         "networkx",
         "pandas",
         "pytest",
-        "python-Levenshtein",
         "six",
         "xlrd",
         "OpenDSSDirect.py",
+        "XlsxWriter",
+        "json_tricks",
+        "scipy",
     ],
     extras_require={
         "dev": [
+            "backports.tempfile",
             "pytest",
             "pytest-cov",
             "sphinx-rtd-theme",

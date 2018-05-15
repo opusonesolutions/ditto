@@ -1,11 +1,14 @@
 
+import logging
 import numpy as np
 import math
 import cmath
 import os
+from functools import reduce
+from six import string_types
 
 #Ditto imports
-from ditto.readers.abstract_reader import abstract_reader
+from ditto.readers.abstract_reader import AbstractReader
 from ditto.store import Store
 from ditto.models.position import Position
 from ditto.models.node import Node
@@ -20,123 +23,127 @@ from ditto.models.powertransformer import PowerTransformer
 from ditto.models.power_source import PowerSource
 from ditto.models.winding import Winding
 from ditto.models.phase_winding import PhaseWinding
+from ditto.models.feeder_metadata import Feeder_metadata
 
 from ditto.models.base import Unicode
 
+logger = logging.getLogger(__name__)
 
-class reader(abstract_reader):
-    '''CYME-->DiTTo Reader class
+class Reader(AbstractReader):
+    '''
+        CYME-->DiTTo Reader class
 
-Author: Nicolas Gensollen. October 2017
+        Author: Nicolas Gensollen. October 2017
 
-.. note::
+        .. note::
 
-    Different versions of CYME might have different header names for the same object.
-    The reader class has a mapping between the objects and the header names with the default mapping being for CYME version XXX (see table below).
-    When using another version of CYME, make sure to modify this mapping to have something consistent:
+            Different versions of CYME might have different header names for the same object.
+            The reader class has a mapping between the objects and the header names with the default mapping being for CYME version XXX (see table below).
+            When using another version of CYME, make sure to modify this mapping to have something consistent:
 
-    >>> my_reader.update_header_mapping(modifications)
+            >>> my_reader.update_header_mapping(modifications)
 
-    Here, modification is a dictionary {object: header} of updates to apply to the default mapping.
+            Here, modification is a dictionary {object: header} of updates to apply to the default mapping.
 
 
-**Default header mapping:**
+        **Default header mapping:**
 
-+-------------------------------------------+--------------------------------------------+
-|                      Object               |                      Header                |
-+===========================================+============================================+
-|                                       NODE PARSER                                      |
-+-------------------------------------------+--------------------------------------------+
-|                      'node'               |                     '[NODE]'               |
-+-------------------------------------------+--------------------------------------------+
-|                                       LINE PARSER                                      |
-+-------------------------------------------+--------------------------------------------+
-|     'overhead_unbalanced_line_settings'   |      '[OVERHEADLINEUNBALANCED SETTING]'    |
-+-------------------------------------------+--------------------------------------------+
-|            'overhead_line_settings'       |            '[OVERHEADLINE SETTING]'        |
-+-------------------------------------------+--------------------------------------------+
-|          'overhead_byphase_settings'      |            '[OVERHEAD BYPHASE SETTING]'    |
-+-------------------------------------------+--------------------------------------------+
-|          'underground_line_settings'      |          '[UNDERGROUNDLINE SETTING]'       |
-+-------------------------------------------+--------------------------------------------+
-|                'switch_settings'          |               '[SWITCH SETTING]'           |
-+-------------------------------------------+--------------------------------------------+
-|                 'fuse_settings'           |                '[FUSE SETTING]'            |
-+-------------------------------------------+--------------------------------------------+
-|               'recloser_settings'         |             '[RECLOSER SETTING]'           |
-+-------------------------------------------+--------------------------------------------+
-|                    'section'              |                    '[SECTION]'             |
-+-------------------------------------------+--------------------------------------------+
-|                     'line'                |                     '[LINE]'               |
-+-------------------------------------------+--------------------------------------------+
-|                'unbalanced_line'          |               '[LINE UNBALANCED]'          |
-+-------------------------------------------+--------------------------------------------+
-|                'spacing_table'            |           '[SPACING TABLE FOR LINE]'       |
-+-------------------------------------------+--------------------------------------------+
-|          'concentric_neutral_cable'       |         '[CONCENTRIC NEUTRAL CABLE]'       |
-+-------------------------------------------+--------------------------------------------+
-|                   'conductor'             |                  '[CONDUCTOR]'             |
-+-------------------------------------------+--------------------------------------------+
-|                                    CAPACITOR PARSER                                    |
-+-------------------------------------------+--------------------------------------------+
-|           'serie_capacitor_settings'      |          '[SERIE CAPACITOR SETTING]'       |
-+-------------------------------------------+--------------------------------------------+
-|           'shunt_capacitor_settings'      |          '[SHUNT CAPACITOR SETTING]'       |
-+-------------------------------------------+--------------------------------------------+
-|                'serie_capacitor'          |               '[SERIE CAPACITOR]'          |
-+-------------------------------------------+--------------------------------------------+
-|                'shunt_capacitor'          |               '[SHUNT CAPACITOR]'          |
-+-------------------------------------------+--------------------------------------------+
-|                                   TRANSFORMER PARSER                                   |
-+-------------------------------------------+--------------------------------------------+
-|          'auto_transformer_settings'      |           '[AUTO TRANSFORMER SETTING'      |
-+-------------------------------------------+--------------------------------------------+
-|       'grounding_transformer_settings'    |       '[GROUNDINGTRANSFORMER SETTINGS]'    |
-+-------------------------------------------+--------------------------------------------+
-| 'three_winding_auto_transformer_settings' | '[THREE WINDING AUTO TRANSFORMER SETTING]' |
-+-------------------------------------------+--------------------------------------------+
-|    'three_winding_transformer_settings'   |     '[THREE WINDING TRANSFORMER SETTING]'  |
-+-------------------------------------------+--------------------------------------------+
-|             'transformer_settings'        |              '[TRANSFORMER SETTING]'       |
-+-------------------------------------------+--------------------------------------------+
-|               'auto_transformer'          |                '[AUTO TRANSFORMER]'        |
-+-------------------------------------------+--------------------------------------------+
-|             'grounding_transformer'       |               '[GROUNDING TRANSFORMER]'    |
-+-------------------------------------------+--------------------------------------------+
-|        'three_winding_auto_transformer'   |        '[THREE WINDING AUTO TRANSFORMER]'  |
-+-------------------------------------------+--------------------------------------------+
-|           'three_winding_transformer'     |           '[THREE WINDING TRANSFORMER]'    |
-+-------------------------------------------+--------------------------------------------+
-|                 'transformer'             |                   '[TRANSFORMER]'          |
-+-------------------------------------------+--------------------------------------------+
-|           'phase_shifter_transformer'     |          '[PHASE SHIFTER TRANSFORMER]'     |
-+-------------------------------------------+--------------------------------------------+
-|                                    REGULATOR PARSER                                    |
-+-------------------------------------------+--------------------------------------------+
-|              'regulator_settings'         |                '[REGULATOR SETTING]'       |
-+-------------------------------------------+--------------------------------------------+
-|                  'regulator'              |                    '[REGULATOR]'           |
-+-------------------------------------------+--------------------------------------------+
-|                                       LOAD PARSER                                      |
-+-------------------------------------------+--------------------------------------------+
-|                'customer_loads'           |                  '[CUSTOMER LOADS]'        |
-+-------------------------------------------+--------------------------------------------+
-|                'customer_class'           |                  '[CUSTOMER CLASS]'        |
-+-------------------------------------------+--------------------------------------------+
-|                     'loads'               |                     '[LOADS]'              |
-+-------------------------------------------+--------------------------------------------+
+        +-------------------------------------------+--------------------------------------------+
+        |                      Object               |                      Header                |
+        +===========================================+============================================+
+        |                                       NODE PARSER                                      |
+        +-------------------------------------------+--------------------------------------------+
+        |                      'node'               |                     '[NODE]'               |
+        +-------------------------------------------+--------------------------------------------+
+        |                                       LINE PARSER                                      |
+        +-------------------------------------------+--------------------------------------------+
+        |     'overhead_unbalanced_line_settings'   |      '[OVERHEADLINEUNBALANCED SETTING]'    |
+        +-------------------------------------------+--------------------------------------------+
+        |            'overhead_line_settings'       |            '[OVERHEADLINE SETTING]'        |
+        +-------------------------------------------+--------------------------------------------+
+        |          'overhead_byphase_settings'      |            '[OVERHEAD BYPHASE SETTING]'    |
+        +-------------------------------------------+--------------------------------------------+
+        |          'underground_line_settings'      |          '[UNDERGROUNDLINE SETTING]'       |
+        +-------------------------------------------+--------------------------------------------+
+        |                'switch_settings'          |               '[SWITCH SETTING]'           |
+        +-------------------------------------------+--------------------------------------------+
+        |                 'fuse_settings'           |                '[FUSE SETTING]'            |
+        +-------------------------------------------+--------------------------------------------+
+        |               'recloser_settings'         |             '[RECLOSER SETTING]'           |
+        +-------------------------------------------+--------------------------------------------+
+        |                    'section'              |                    '[SECTION]'             |
+        +-------------------------------------------+--------------------------------------------+
+        |                     'line'                |                     '[LINE]'               |
+        +-------------------------------------------+--------------------------------------------+
+        |                'unbalanced_line'          |               '[LINE UNBALANCED]'          |
+        +-------------------------------------------+--------------------------------------------+
+        |                'spacing_table'            |           '[SPACING TABLE FOR LINE]'       |
+        +-------------------------------------------+--------------------------------------------+
+        |          'concentric_neutral_cable'       |         '[CONCENTRIC NEUTRAL CABLE]'       |
+        +-------------------------------------------+--------------------------------------------+
+        |                   'conductor'             |                  '[CONDUCTOR]'             |
+        +-------------------------------------------+--------------------------------------------+
+        |                                    CAPACITOR PARSER                                    |
+        +-------------------------------------------+--------------------------------------------+
+        |           'serie_capacitor_settings'      |          '[SERIE CAPACITOR SETTING]'       |
+        +-------------------------------------------+--------------------------------------------+
+        |           'shunt_capacitor_settings'      |          '[SHUNT CAPACITOR SETTING]'       |
+        +-------------------------------------------+--------------------------------------------+
+        |                'serie_capacitor'          |               '[SERIE CAPACITOR]'          |
+        +-------------------------------------------+--------------------------------------------+
+        |                'shunt_capacitor'          |               '[SHUNT CAPACITOR]'          |
+        +-------------------------------------------+--------------------------------------------+
+        |                                   TRANSFORMER PARSER                                   |
+        +-------------------------------------------+--------------------------------------------+
+        |          'auto_transformer_settings'      |           '[AUTO TRANSFORMER SETTING'      |
+        +-------------------------------------------+--------------------------------------------+
+        |       'grounding_transformer_settings'    |       '[GROUNDINGTRANSFORMER SETTINGS]'    |
+        +-------------------------------------------+--------------------------------------------+
+        | 'three_winding_auto_transformer_settings' | '[THREE WINDING AUTO TRANSFORMER SETTING]' |
+        +-------------------------------------------+--------------------------------------------+
+        |    'three_winding_transformer_settings'   |     '[THREE WINDING TRANSFORMER SETTING]'  |
+        +-------------------------------------------+--------------------------------------------+
+        |             'transformer_settings'        |              '[TRANSFORMER SETTING]'       |
+        +-------------------------------------------+--------------------------------------------+
+        |               'auto_transformer'          |                '[AUTO TRANSFORMER]'        |
+        +-------------------------------------------+--------------------------------------------+
+        |             'grounding_transformer'       |               '[GROUNDING TRANSFORMER]'    |
+        +-------------------------------------------+--------------------------------------------+
+        |        'three_winding_auto_transformer'   |        '[THREE WINDING AUTO TRANSFORMER]'  |
+        +-------------------------------------------+--------------------------------------------+
+        |           'three_winding_transformer'     |           '[THREE WINDING TRANSFORMER]'    |
+        +-------------------------------------------+--------------------------------------------+
+        |                 'transformer'             |                   '[TRANSFORMER]'          |
+        +-------------------------------------------+--------------------------------------------+
+        |           'phase_shifter_transformer'     |          '[PHASE SHIFTER TRANSFORMER]'     |
+        +-------------------------------------------+--------------------------------------------+
+        |                                    REGULATOR PARSER                                    |
+        +-------------------------------------------+--------------------------------------------+
+        |              'regulator_settings'         |                '[REGULATOR SETTING]'       |
+        +-------------------------------------------+--------------------------------------------+
+        |                  'regulator'              |                    '[REGULATOR]'           |
+        +-------------------------------------------+--------------------------------------------+
+        |                                       LOAD PARSER                                      |
+        +-------------------------------------------+--------------------------------------------+
+        |                'customer_loads'           |                  '[CUSTOMER LOADS]'        |
+        +-------------------------------------------+--------------------------------------------+
+        |                'customer_class'           |                  '[CUSTOMER CLASS]'        |
+        +-------------------------------------------+--------------------------------------------+
+        |                     'loads'               |                     '[LOADS]'              |
+        +-------------------------------------------+--------------------------------------------+
+    '''
+    register_names = ["cyme", "Cyme", "CYME"]
 
-'''
     def __init__(self, **kwargs):
-        '''CYME-->DiTTo class constructor
+        '''
+            CYME-->DiTTo class constructor
+        '''
+        # Call super
+        super(Reader, self).__init__(**kwargs)
 
-'''
-        #Call super
-        abstract_reader.__init__(self, **kwargs)
-
-        #Setting the file names and path
+        # Setting the file names and path
         #
-        #Set the path to the CYME data files
+        # Set the path to the CYME data files
         if 'data_folder_path' in kwargs:
             self.data_folder_path = kwargs['data_folder_path']
         #Default is current directory
@@ -161,6 +168,9 @@ Author: Nicolas Gensollen. October 2017
         else:
             self.load_filename ='load.txt'
 
+        #Set the Network Type to be None. This is set in the parse_sections() function
+        self.network_type = None
+
         #Header_mapping.
         #
         #Modify this structure if the headers of your CYME version are not the default one.
@@ -174,6 +184,7 @@ Author: Nicolas Gensollen. October 2017
                                                  'overhead_byphase_settings': '[OVERHEAD BYPHASE SETTING]',
                                                  'underground_line_settings': '[UNDERGROUNDLINE SETTING]',
                                                  'switch_settings': '[SWITCH SETTING]',
+                                                 'sectionalizer_settings': '[SECTIONALIZER SETTING]',
                                                  'fuse_settings': '[FUSE SETTING]',
                                                  'recloser_settings': '[RECLOSER SETTING]',
                                                  'breaker_settings': '[BREAKER SETTING]',
@@ -182,7 +193,8 @@ Author: Nicolas Gensollen. October 2017
                                                  'unbalanced_line': '[LINE UNBALANCED]',
                                                  'spacing_table': '[SPACING TABLE FOR LINE]',
                                                  'conductor': '[CONDUCTOR]',
-                                                 'concentric_neutral_cable': '[CONCENTRIC NEUTRAL CABLE]',
+                                                 'cable': '[CABLE]',
+                                                 'concentric_neutral_cable': '[CABLE CONCENTRIC NEUTRAL]',
                                                  #CAPACITORS
                                                  'serie_capacitor_settings': '[SERIE CAPACITOR SETTING]',
                                                  'shunt_capacitor_settings': '[SHUNT CAPACITOR SETTING]',
@@ -209,8 +221,11 @@ Author: Nicolas Gensollen. October 2017
                                                  'customer_class': '[CUSTOMER CLASS]',
                                                  'loads': '[LOADS]',
                                                  'source': '[SOURCE]',
+                                                 'headnodes': '[HEADNODES]',
                                                  'source_equivalent': '[SOURCE EQUIVALENT]',
+                                                 #SUBSTATIONS
                                                  'substation': '[SUBSTATION]',
+                                                 'subnetwork_connections': '[SUBNETWORK CONNECTIONS]'
                                                  }
 
 
@@ -218,21 +233,17 @@ Author: Nicolas Gensollen. October 2017
 
 
     def update_header_mapping(self, update):
-        '''This method changes the default object<->header mapping.
-This can be useful when using a different version of CYME for example.
+        '''
+            This method changes the default object<->header mapping.
+            This can be useful when using a different version of CYME for example.
 
-**Usage:**
+            **Usage:**
 
->>> my_reader.update_header_mapping(modifications)
+            >>> my_reader.update_header_mapping(modifications)
 
-:param update: New object<->header mapping
-:type update: dict
-
-**Default mapping:**
-
-COPY PASTE FROM CONSTRCTOR
-
-'''
+            :param update: New object<->header mapping
+            :type update: dict
+        '''
         #Check that the update is a Python dict
         if not isinstance(update, dict):
             raise ValueError('update_header_mapping expects a dictionary. A {type} instance was provided'.format(type(update)))
@@ -256,18 +267,15 @@ COPY PASTE FROM CONSTRCTOR
 
 
 
-
-
-
     def get_file_content(self, filename):
-        '''Open the requested file and returns the content.
-For convinience, filename can be either the full file path or:
+        '''
+            Open the requested file and returns the content.
+            For convinience, filename can be either the full file path or:
 
--'network': Will get the content of the network file given in the constructor
--'equipment': Will get the content of the equipment file given in the constructor
--'load': Will get the content of the load file given in the constructor
-
-'''
+                -'network': Will get the content of the network file given in the constructor
+                -'equipment': Will get the content of the equipment file given in the constructor
+                -'load': Will get the content of the load file given in the constructor
+        '''
         #Shortcut mapping
         if filename=='network':
             filename=os.path.join(self.data_folder_path,self.network_filename)
@@ -281,40 +289,42 @@ For convinience, filename can be either the full file path or:
             with open(filename, 'r') as f:
                 content_=f.readlines()
         except:
-            raise ValueError('Unable to open file {name}'.format(name=filename))
+            logger.warning('Unable to open file {name}'.format(name=filename))
+            content_=[]
+            pass
 
         self.content=iter(content_)
 
 
 
     def phase_mapping(self, CYME_value):
-        '''Maps the CYME phase value format to a list of ABC phases:
+        '''
+            Maps the CYME phase value format to a list of ABC phases:
 
-+------------+--------------+
-| CYME value | Return value |
-+============+==============+
-|     0      |     [None]   |
-+------------+--------------+
-|     1      |     ['A']    |
-+------------+--------------+
-|     2      |     ['B']    |
-+------------+--------------+
-|     3      |     ['C']    |
-+------------+--------------+
-|     4      |  ['A','B']   |
-+------------+--------------+
-|     5      |  ['A','C']   |
-+------------+--------------+
-|     6      |  ['B','C']   |
-+------------+--------------+
-|     7      | ['A','B','C']|
-+------------+--------------+
+            +------------+--------------+
+            | CYME value | Return value |
+            +============+==============+
+            |     0      |     [None]   |
+            +------------+--------------+
+            |     1      |     ['A']    |
+            +------------+--------------+
+            |     2      |     ['B']    |
+            +------------+--------------+
+            |     3      |     ['C']    |
+            +------------+--------------+
+            |     4      |  ['A','B']   |
+            +------------+--------------+
+            |     5      |  ['A','C']   |
+            +------------+--------------+
+            |     6      |  ['B','C']   |
+            +------------+--------------+
+            |     7      | ['A','B','C']|
+            +------------+--------------+
 
-.. note::
+            .. note::
 
-If the value provided is not an integer in [0,7], the function assumes that it receives a string like 'ABC'. In this case, it splits the string in a list of phases ['A','B','C'].
-
-'''
+                If the value provided is not an integer in [0,7], the function assumes that it receives a string like 'ABC'. In this case, it splits the string in a list of phases ['A','B','C'].
+        '''
         if CYME_value==0: return [None]
         elif CYME_value==1: return ['A']
         elif CYME_value==2: return ['B']
@@ -330,21 +340,21 @@ If the value provided is not an integer in [0,7], the function assumes that it r
 
 
     def phase_to_num(self, phase):
-        '''Maps phase in 'A', 'B', 'C' format in 1, 2, 3 format.
+        '''
+            Maps phase in 'A', 'B', 'C' format in 1, 2, 3 format.
 
-**Mapping:**
+            **Mapping:**
 
-+--------+-------+
-| letter | digit |
-+========+=======+
-|   'A'  |   1   |
-+--------+-------+
-|   'B'  |   2   |
-+--------+-------+
-|   'C'  |   3   |
-+--------+-------+
-
-'''
+            +--------+-------+
+            | letter | digit |
+            +========+=======+
+            |   'A'  |   1   |
+            +--------+-------+
+            |   'B'  |   2   |
+            +--------+-------+
+            |   'C'  |   3   |
+            +--------+-------+
+        '''
         if phase=='A' or phase=='a': return '1'
         elif phase=='B' or phase=='b': return '2'
         elif phase=='C' or phase=='c': return '3'
@@ -352,36 +362,34 @@ If the value provided is not an integer in [0,7], the function assumes that it r
 
 
 
-
-
     def load_value_type_mapping(self, load_type, value1, value2):
-        '''CYME customer loads provide two values v1 and v2 as well as a load value type:
-This function takes these as inputs and outputs P and Q of the load.
+        '''
+            CYME customer loads provide two values v1 and v2 as well as a load value type:
+            This function takes these as inputs and outputs P and Q of the load.
 
-:param load_type: CYME load type
-:type load_type: int or str (see table below)
-:param value1: Value 1
-:type value1: float
-:param value2: Value 2
-:type value2: float
-:returns: P and Q
-:rtype: KW and KVAR
+            :param load_type: CYME load type
+            :type load_type: int or str (see table below)
+            :param value1: Value 1
+            :type value1: float
+            :param value2: Value 2
+            :type value2: float
+            :returns: P and Q
+            :rtype: KW and KVAR
 
-**Mapping:**
+            **Mapping:**
 
-+-----------+------------+-----------------+------------------------------------------+
-| type code | type value |        P        |                 Q                        |
-+===========+============+=================+==========================================+
-|    0      |  KW_KVAR   | :math:`v_1`     | :math:`v_2`                              |
-+-----------+------------+-----------------+------------------------------------------+
-|    1      |  KVA_PF    | :math:`v_1 v_2` | :math:`v_1 \\sqrt{1-v_2^2}`              |
-+-----------+------------+-----------------+------------------------------------------+
-|    2      |  KW_PF     | :math:`v_1`     | :math:`\\frac{v_1}{v_2} \\sqrt{1-v_2^2}` |
-+-----------+------------+-----------------+------------------------------------------+
-|    3      |  AMP_PF    |      ??         |                  ??                      |
-+-----------+------------+-----------------+------------------------------------------+
-
-'''
+            +-----------+------------+-----------------+------------------------------------------+
+            | type code | type value |        P        |                 Q                        |
+            +===========+============+=================+==========================================+
+            |    0      |  KW_KVAR   | :math:`v_1`     | :math:`v_2`                              |
+            +-----------+------------+-----------------+------------------------------------------+
+            |    1      |  KVA_PF    | :math:`v_1 v_2` | :math:`v_1 \\sqrt{1-v_2^2}`              |
+            +-----------+------------+-----------------+------------------------------------------+
+            |    2      |  KW_PF     | :math:`v_1`     | :math:`\\frac{v_1}{v_2} \\sqrt{1-v_2^2}` |
+            +-----------+------------+-----------------+------------------------------------------+
+            |    3      |  AMP_PF    |      ??         |                  ??                      |
+            +-----------+------------+-----------------+------------------------------------------+
+        '''
         if not isinstance(value1, float):
             try:
                 value1=float(value1)
@@ -394,7 +402,7 @@ This function takes these as inputs and outputs P and Q of the load.
             except:
                 raise ValueError('Value2={} could not be converted to float in load_value_type_mapping.'.format(value2))
 
-        if isinstance(load_type, str):
+        if isinstance(load_type, string_types):
             if load_type=='0' or load_type.lower()=='kw_kvar': return value1, value2
             if load_type=='1' or load_type.lower()=='kva_pf': return value1*value2, value1*np.sqrt(1-value2**2)
             if load_type=='2' or load_type.lower()=='kw_pf': return value1, value1/value2*np.sqrt(1-value2**2)
@@ -411,30 +419,28 @@ This function takes these as inputs and outputs P and Q of the load.
 
 
 
-
-
     def capacitors_connection_mapping(self, conn):
-        '''Maps the capacitors connection in CYME (CAP_CONN) to DiTTo connection_type.
+        '''
+            Maps the capacitors connection in CYME (CAP_CONN) to DiTTo connection_type.
 
-:param conn: Connection in CYME
-:type conn: integer or string
-:returns: Connection in DiTTo
-:rtype: str
+            :param conn: Connection in CYME
+            :type conn: integer or string
+            :returns: Connection in DiTTo
+            :rtype: str
 
-**Mapping:**
+            **Mapping:**
 
-+---------------+-----------------------+
-| CYME CAP_CONN | DiTTo connection_type |
-+===============+=======================+
-|   0 or 'Y'    |           'Y'         |
-+---------------+-----------------------+
-|   1 or 'YNG'  |           'Y'         |
-+---------------+-----------------------+
-|   2 or 'D'    |           'D'         |
-+---------------+-----------------------+
-
-'''
-        if not isinstance(conn, (str,int)):
+            +---------------+-----------------------+
+            | CYME CAP_CONN | DiTTo connection_type |
+            +===============+=======================+
+            |   0 or 'Y'    |           'Y'         |
+            +---------------+-----------------------+
+            |   1 or 'YNG'  |           'Y'         |
+            +---------------+-----------------------+
+            |   2 or 'D'    |           'D'         |
+            +---------------+-----------------------+
+        '''
+        if not isinstance(conn, (string_types,int)):
             raise ValueError('capacitors_connection_mapping only accepts int or string. {} was provided.'.format(type(conn)))
 
         if conn==0 or conn=='0' or conn=='Y': return 'Y'
@@ -447,38 +453,38 @@ This function takes these as inputs and outputs P and Q of the load.
 
 
     def connection_configuration_mapping(self, value):
-        '''Map the connection configuration from CYME to DiTTo.
+        '''
+            Map the connection configuration from CYME to DiTTo.
 
-**Mapping:**
+            **Mapping:**
 
-+----------+----------------+------------+
-|   Value  |       CYME     |  DiTTo     |
-+==========+================+============+
-| 0 or '0' |       'Yg'     |   'Y'      |
-+----------+----------------+------------+
-| 1 or '1' |       'Y'      |   'Y'      |
-+----------+----------------+------------+
-| 2 or '2' |     'Delta'    |   'D'      |
-+----------+----------------+------------+
-| 3 or '3' |  'Open Delta'  |   'D'      |
-+----------+----------------+------------+
-| 4 or '4' | 'Closed Delta' |   'D'      |
-+----------+----------------+------------+
-| 5 or '5' |      'Zg'      |   'Z'      |
-+----------+----------------+------------+
-| 6 or '6' |      'CT'      | NOT MAPPED |
-+----------+----------------+------------+
-| 7 or '7' |      'Dg'      | NOT MAPPED |
-+----------+----------------+------------+
-
-'''
+            +----------+----------------+------------+
+            |   Value  |       CYME     |  DiTTo     |
+            +==========+================+============+
+            | 0 or '0' |       'Yg'     |   'Y'      |
+            +----------+----------------+------------+
+            | 1 or '1' |       'Y'      |   'Y'      |
+            +----------+----------------+------------+
+            | 2 or '2' |     'Delta'    |   'D'      |
+            +----------+----------------+------------+
+            | 3 or '3' |  'Open Delta'  |   'D'      |
+            +----------+----------------+------------+
+            | 4 or '4' | 'Closed Delta' |   'D'      |
+            +----------+----------------+------------+
+            | 5 or '5' |      'Zg'      |   'Z'      |
+            +----------+----------------+------------+
+            | 6 or '6' |      'CT'      | NOT MAPPED |
+            +----------+----------------+------------+
+            | 7 or '7' |      'Dg'      | NOT MAPPED |
+            +----------+----------------+------------+
+        '''
         if isinstance(value, int):
             if value in [0,1]: return 'Y'
             if value in [2,3,4]: return 'D'
             if value==5: return 'Z'
             if value in [6,7]: raise NotImplementedError('Connection {} not implemented.'.format(value))
 
-        elif isinstance(value, str):
+        elif isinstance(value, string_types):
             if value=='0' or value.lower()=='yg' or value=='1' or value.lower()=='y': return 'Y'
             if value=='2' or value.lower()=='delta' or value=='3' or value.lower()=='open delta' or value=='4' or value=='closed delta': return 'D'
             if value=='5' or value.lower()=='zg': return 'Z'
@@ -491,50 +497,50 @@ This function takes these as inputs and outputs P and Q of the load.
 
 
     def transformer_connection_configuration_mapping(self, value, winding):
-        '''Map the connection configuration for transformer (2 windings) objects from CYME to DiTTo.
+        '''
+            Map the connection configuration for transformer (2 windings) objects from CYME to DiTTo.
 
-:param value: CYME value (either string or id)
-:type value: int or str
-:param winding: Number of the winding (0 or 1)
-:type winding: int
-:returns: DiTTo connection configuration for the requested winding
-:rtype: str
+            :param value: CYME value (either string or id)
+            :type value: int or str
+            :param winding: Number of the winding (0 or 1)
+            :type winding: int
+            :returns: DiTTo connection configuration for the requested winding
+            :rtype: str
 
-**Mapping:**
+            **Mapping:**
 
-+----------+----------------+------------+
-|   Value  |       CYME     |  DiTTo     |
-+----------+----------------+-----+------+
-|          |                | 1st | 2nd  |
-+==========+================+=====+======+
-| 0 or '0' |      'Y_Y'     | 'Y' | 'Y'  |
-+----------+----------------+-----+------+
-| 1 or '1' |      'D_Y'     | 'D' | 'Y'  |
-+----------+----------------+-----+------+
-| 2 or '2' |      'Y_D'     | 'Y' | 'D'  |
-+----------+----------------+-----+------+
-| 3 or '3' |    'YNG_YNG'   | 'Y' | 'Y'  |
-+----------+----------------+-----+------+
-| 4 or '4' |      'D_D'     | 'D' | 'D'  |
-+----------+----------------+-----+------+
-| 5 or '5' |     'DO_DO'    | 'D' | 'D'  |
-+----------+----------------+-----+------+
-| 6 or '6' |     'YO_DO'    | 'Y' | 'D'  |
-+----------+----------------+-----+------+
-| 7 or '7' |     'D_YNG'    | 'D' | 'Y'  |
-+----------+----------------+-----+------+
-| 8 or '8' |     'YNG_D'    | 'Y' | 'D'  |
-+----------+----------------+-----+------+
-| 9 or '9' |     'Y_YNG'    | 'Y' | 'Y'  |
-+----------+----------------+-----+------+
-|10 or '10'|     'YNG_Y'    | 'Y' | 'Y'  |
-+----------+----------------+-----+------+
-|11 or '11'|     'Yg_Zg'    | 'Y' | 'Z'  |
-+----------+----------------+-----+------+
-|12 or '12'|     'D_Zg'     | 'D' | 'Z'  |
-+----------+----------------+-----+------+
-
-'''
+            +----------+----------------+------------+
+            |   Value  |       CYME     |  DiTTo     |
+            +----------+----------------+-----+------+
+            |          |                | 1st | 2nd  |
+            +==========+================+=====+======+
+            | 0 or '0' |      'Y_Y'     | 'Y' | 'Y'  |
+            +----------+----------------+-----+------+
+            | 1 or '1' |      'D_Y'     | 'D' | 'Y'  |
+            +----------+----------------+-----+------+
+            | 2 or '2' |      'Y_D'     | 'Y' | 'D'  |
+            +----------+----------------+-----+------+
+            | 3 or '3' |    'YNG_YNG'   | 'Y' | 'Y'  |
+            +----------+----------------+-----+------+
+            | 4 or '4' |      'D_D'     | 'D' | 'D'  |
+            +----------+----------------+-----+------+
+            | 5 or '5' |     'DO_DO'    | 'D' | 'D'  |
+            +----------+----------------+-----+------+
+            | 6 or '6' |     'YO_DO'    | 'Y' | 'D'  |
+            +----------+----------------+-----+------+
+            | 7 or '7' |     'D_YNG'    | 'D' | 'Y'  |
+            +----------+----------------+-----+------+
+            | 8 or '8' |     'YNG_D'    | 'Y' | 'D'  |
+            +----------+----------------+-----+------+
+            | 9 or '9' |     'Y_YNG'    | 'Y' | 'Y'  |
+            +----------+----------------+-----+------+
+            |10 or '10'|     'YNG_Y'    | 'Y' | 'Y'  |
+            +----------+----------------+-----+------+
+            |11 or '11'|     'Yg_Zg'    | 'Y' | 'Z'  |
+            +----------+----------------+-----+------+
+            |12 or '12'|     'D_Zg'     | 'D' | 'Z'  |
+            +----------+----------------+-----+------+
+        '''
         if winding not in [0,1]:
             raise ValueError('transformer_connection_configuration_mapping expects an integer 0 or 1 for winding arg. {} was provided.'.format(winding))
 
@@ -548,7 +554,7 @@ This function takes these as inputs and outputs P and Q of the load.
             if value==11: res=('Y','Z')
             if value==12: res=('D','Z')
 
-        elif isinstance(value, str):
+        elif isinstance(value, string_types):
             if value=='0' or value.lower()=='y_y': res=('Y','Y')
             if value=='1' or value.lower()=='d_y': res=('D','Y')
             if value=='2' or value.lower()=='y_d': res=('Y','D')
@@ -572,42 +578,39 @@ This function takes these as inputs and outputs P and Q of the load.
 
 
     def check_object_in_line(self, line, obj):
-        '''Check if the header corresponding to object is in the given line.
+        '''
+            Check if the header corresponding to object is in the given line.
 
-:param line: Text line from CYME ASCII file
-:type line: str
-:param obj: Object of interest that exists in the mapping
-:type obj: str
-:returns: True if the header is in line. False otherwise.
-:rtype: bool
-
-'''
+            :param line: Text line from CYME ASCII file
+            :type line: str
+            :param obj: Object of interest that exists in the mapping
+            :type obj: str
+            :returns: True if the header is in line. False otherwise.
+            :rtype: bool
+        '''
         #Safety checks
-        if not isinstance(line, str):
+        if not isinstance(line, string_types):
             raise ValueError('check_object_in_line expects a string for both line and object. A {type} instance was provided for line.'.format(type=type(line)))
 
-        if not isinstance(obj, str):
+        if not isinstance(obj, string_types):
             raise ValueError('check_object_in_line expects a string for both line and object. A {type} instance was provided for object.'.format(type=type(obj)))
 
         if not obj in self.header_mapping:
-            raise ValueError('{obj} is not a valid object name for the object<->header mapping.'.format(obj=obj))
+            raise ValueError('{obj} is not a valid object name for the object<->header mapping.{mapp}'.format(obj=obj,mapp=self.header_mapping))
 
         return self.header_mapping[obj] in line
 
 
 
 
-
-
-
     def parser_helper(self, line, obj_list, attribute_list, mapping, *args):
-        '''.. warning:: This is a helper function for the parsers. Do not use directly.
+        '''
+            .. warning:: This is a helper function for the parsers. Do not use directly.
 
-Takes as input the list of objects we want to parse as well as the list of attributes we want to extract.
-Also takes the default positions of the attributes (mapping).
-The function returns a list of dictionaries, where each dictionary contains the values of the desired attributes of a CYME object.
-
-'''
+            Takes as input the list of objects we want to parse as well as the list of attributes we want to extract.
+            Also takes the default positions of the attributes (mapping).
+            The function returns a list of dictionaries, where each dictionary contains the values of the desired attributes of a CYME object.
+        '''
         if isinstance(attribute_list, list):
             attribute_list=np.array(attribute_list)
 
@@ -686,44 +689,53 @@ The function returns a list of dictionaries, where each dictionary contains the 
 
 
     def parse(self, model, **kwargs):
-        '''Parse the CYME model to DiTTo.
+        '''
+            Parse the CYME model to DiTTo.
 
-:param model: DiTTo model
-:type model: DiTTo model
-:param verbose: Set the verbose mode. Optional. Default=True
-:type verbose: bool
-
-'''
+            :param model: DiTTo model
+            :type model: DiTTo model
+            :param verbose: Set the verbose mode. Optional. Default=True
+            :type verbose: bool
+        '''
         if 'verbose' in kwargs and isinstance(kwargs['verbose'], bool):
             self.verbose=kwargs['verbose']
         else:
             self.verbose=False
 
         if self.verbose:
-            print('*'*40)
-            print('Parsing the header...')
-        self.logger.info('Parsing the header...')
+            logger.info('Parsing the header...')
 
         self.parse_header()
 
-        self.logger.info('Parsing the sections...')
+        logger.info('Parsing the sections...')
         self.parse_sections(model)
 
-        self.logger.info('Parsing the sources...')
+        logger.info('Parsing the sources...')
         self.parse_sources(model)
 
+        
+
         #Call parse method of abtract reader
-        abstract_reader.parse(self, model, **kwargs)
+        super(Reader, self).parse(model, **kwargs)
+
+        # The variable self.network_type is set in the parse_sections() function.
+        # i.e. parse_sections
+        if self.network_type == 'substation':
+            logger.info('Parsing the subnetwork connections...')
+            self.parse_subnetwork_connections(model)
+        else:
+            logger.info('Parsing the Headnodes...')
+            self.parse_head_nodes(model)
 
 
 
     def parse_header(self):
-        '''Parse the information available in the header.
-Here, we are interested in the version of CYME used in the provided files, as well as the unit system used.
-Since the reader was developed using the documentation for CYME v.8.0, give a warning if the version if different.
-The user is then responsible to check the differences betweeen the two versions.
-
-'''
+        '''
+            Parse the information available in the header.
+            Here, we are interested in the version of CYME used in the provided files, as well as the unit system used.
+            Since the reader was developed using the documentation for CYME v.8.0, give a warning if the version if different.
+            The user is then responsible to check the differences betweeen the two versions.
+        '''
         cyme_version=None
         self.use_SI=None
 
@@ -737,22 +749,22 @@ The user is then responsible to check the differences betweeen the two versions.
                 except:
                     pass
                 if cyme_version is not None:
-                    print('---| Cyme_version={v} |---'.format(v=cyme_version))
+                    logger.info('---| Cyme_version={v} |---'.format(v=cyme_version))
                     if '.' in cyme_version:
                         try:
                             a,b=cyme_version.split('.')
                         except:
                             pass
                         if a!=8 and b!=0:
-                            print('Warning. The current CYME--->DiTTo reader was developed with documentation of CYME 8.0. Your version is {}. You might want to check the differences between the two.'.format(cyme_version))
+                            logger.warning('Warning. The current CYME--->DiTTo reader was developed with documentation of CYME 8.0. Your version is {}. You might want to check the differences between the two.'.format(cyme_version))
 
             if '[si]' in line.lower():
                 self.use_SI=True
-                print('Unit system used = S.I')
+                logger.debug('Unit system used = S.I')
 
             if '[imperial]' in line.lower():
                 self.use_SI=False
-                print('Unit system used = Imperial')
+                logger.debug('Unit system used = Imperial')
 
         self.cyme_version=cyme_version
 
@@ -760,11 +772,47 @@ The user is then responsible to check the differences betweeen the two versions.
             raise ValueError('Could not find [SI] or [IMPERIAL] unit system information. Unable to parse.')
 
 
+    def parse_subnetwork_connections(self, model):
+        '''Parse the subnetwork connections.
+           These specify the interconnection points for a substation
+        '''
+        model.set_names()
+        self.get_file_content('network')
+        mapp_subnetwork_connections={'nodeid':1}
+        self.subnetwork_connections = {}
+        for line in self.content:
+            self.subnetwork_connections.update(self.parser_helper(line,['subnetwork_connections'],['nodeid'],mapp_subnetwork_connections))
+
+        for key in self.subnetwork_connections:
+            model[self.subnetwork_connections[key]['nodeid']].is_substation_connection = 1
+
+        
+
+
+    def parse_head_nodes(self, model):
+        ''' This parses the [HEADNODES] objects and is used to build Feeder_metadata DiTTo objects
+            which define the feeder names and feeder headnodes
+         '''
+        #Open the network file
+        self.get_file_content('network')
+        mapp = {'nodeid':0,'networkid':1}  #These correspond to the head node name and the feeder name
+        headnodes = {}
+        for line in self.content:
+            headnodes.update(self.parser_helper(line,['headnodes'],['nodeid','networkid'],mapp))
+        
+        for sid, headnode in headnodes.items():
+            feeder_metadata = Feeder_metadata(model)
+            feeder_metadata.name = headnode['networkid'].strip().lower()
+            feeder_metadata.headnode = headnode['nodeid'].strip().lower()
+
+
+
 
     def parse_sources(self, model):
         '''
+            Parse the sources.
+        '''
 
-'''
         #Open the network file
         self.get_file_content('network')
 
@@ -778,26 +826,18 @@ The user is then responsible to check the differences betweeen the two versions.
 
         for line in self.content:
             sources.update(self.parser_helper(line, ['source'], ['sourceid', 'nodeid', 'networkid', 'desiredvoltage'], mapp))
-            source_equivalents.update(self.parser_helper(line, ['source_equivalent'], ['nodeid', 'voltage', 'operatingangle1', 'operatingangle2', 'operatingangle3', 'positivesequenceresistance', 'positivesequencereactance', 'zerosequencereactance', 'zerosequenceresistance','configuration'], mapp_source_equivalent))
+            source_equivalents.update(self.parser_helper(line, ['source_equivalent'], ['nodeid', 'voltage', 'operatingangle1', 'operatingangle2', 'operatingangle3', 'positivesequenceresistance', 'positivesequencereactance', 'zerosequencereactance', 'zerosequenceresistance','configuration','basemva','loadmodelname'], mapp_source_equivalent))
 
         self.get_file_content('equipment')
 
         for line in self.content:
             subs.update(self.parser_helper(line, ['substation'], ['id', 'mva', 'kvll', 'conn'], mapp_sub))
-
-        for sid, sdata in sources.items():
-
-            source_equivalent_data=None
-
-            if 'nodeid' in sdata and sdata['nodeid'] in source_equivalents:
-                source_equivalent_data=source_equivalents[sdata['nodeid']]
-
-
-            if sid in subs:
-
-                #Find the section
+        if len(sources.items()) ==0:
+            for sid, source_equivalent_data in source_equivalents.items():
+                if source_equivalent_data['loadmodelname'].lower() !='default':
+                    continue #Want to only use the default source equivalent configuration
                 for k,v in self.section_phase_mapping.items():
-                    if v['fromnodeid']==sdata['nodeid']:
+                    if v['fromnodeid']==source_equivalent_data['nodeid']:
                         sectionID=k
                         _from=v['fromnodeid']
                         _to=v['tonodeid']
@@ -807,13 +847,10 @@ The user is then responsible to check the differences betweeen the two versions.
                 except:
                     pass
 
-                api_source.name=_from
+                api_source.name=_from+'_src'
 
                 try:
-                    if 'desiredvoltage' in sdata:
-                        api_source.nominal_voltage=float(sdata['desiredvoltage'])*10**3
-                    else:
-                        api_source.nominal_voltage=float(source_equivalent_data['voltage'])*10**3
+                    api_source.nominal_voltage=float(source_equivalent_data['voltage'])*10**3
                 except:
                     pass
 
@@ -825,7 +862,7 @@ The user is then responsible to check the differences betweeen the two versions.
                 api_source.is_sourcebus=1
 
                 try:
-                    api_source.rated_power=10**3*float(subs[sid]['mva'])
+                    api_source.rated_power=10**3*float(source_equivalent_data['mva']) #Modified from source cases where substations can be used.
                 except:
                     pass
 
@@ -851,84 +888,150 @@ The user is then responsible to check the differences betweeen the two versions.
                 except:
                     pass
 
-                # try:
-                #     api_transformer=PowerTransformer(model)
-                # except:
-                #     pass
-
-                # try:
-                #     api_transformer.is_substation=1
-                # except:
-                #     pass
-
-                # try:
-                #     api_transformer.name=sid
-                # except:
-                #     pass
-
-                # try:
-                #     api_transformer.rated_power=10**3*float(subs[sid]['mva'])
-                # except:
-                #     pass
-
-                # try:
-                #     api_transformer.from_element=_from
-                # except:
-                #     pass
-
-                # try:
-                #     api_transformer.to_element=_to
-                # except:
-                #     pass
-
-                # for w in range(2):
-                #     try:
-                #         api_winding=Winding(model)
-                #     except:
-                #         pass
-
-                #     try:
-                #         api_winding.connection_type=self.transformer_connection_configuration_mapping(subs[sid]['conn'])
-                #     except:
-                #         pass
-
-                #     try:
-                #         api_winding.nominal_voltage=10**3*float(subs[sid]['kvll'])
-                #     except:
-                #         pass
-
-                #     try:
-                #         api_winding.rated_power=10**6*float(subs[sid]['mva'])
-                #     except:
-                #         pass
-
-                #     for p in phases:
-                #         try:
-                #             api_phase_winding=PhaseWinding(model)
-                #         except:
-                #             pass
-
-                #         try:
-                #             api_phase_winding.phase=self.phase_mapping(p)
-                #         except:
-                #             pass
-
-                #         api_winding.phase_windings.append(api_phase_winding)
-
-                #     api_transformer.windings.append(api_winding)
 
 
+        else:
+            for sid, sdata in sources.items():
 
+                source_equivalent_data=None
+
+                if 'nodeid' in sdata and sdata['nodeid'] in source_equivalents:
+                    source_equivalent_data=source_equivalents[sdata['nodeid']]
+
+
+                if sid in subs:
+
+                    #Find the section
+                    for k,v in self.section_phase_mapping.items():
+                        if v['fromnodeid']==sdata['nodeid']:
+                            sectionID=k
+                            _from=v['fromnodeid']
+                            _to=v['tonodeid']
+                            phases=list(v['phase'])
+                    try:
+                        api_source=PowerSource(model)
+                    except:
+                        pass
+
+                    api_source.name=_from+'_src'
+
+                    try:
+                        if 'desiredvoltage' in sdata:
+                            api_source.nominal_voltage=float(sdata['desiredvoltage'])*10**3
+                        else:
+                            api_source.nominal_voltage=float(source_equivalent_data['voltage'])*10**3
+                    except:
+                        pass
+
+                    try:
+                        api_source.phases=phases
+                    except:
+                        pass
+
+                    api_source.is_sourcebus=1
+
+                    try:
+                        api_source.rated_power=10**3*float(subs[sid]['mva'])
+                    except:
+                        pass
+
+                    #TODO: connection_type
+
+                    try:
+                        api_source.phase_angle=source_equivalent_data['operatingangle1']
+                    except:
+                        pass
+
+                    #try:
+                    api_source.positive_sequence_impedance=complex(float(source_equivalent_data['positivesequenceresistance']),float(source_equivalent_data['positivesequencereactance']))
+                    #except:
+                    #pass
+
+                    try:
+                        api_source.zero_sequence_impedance=complex(source_equivalent_data['zerosequenceresistance'],source_equivalent_data['zerosequencereactance'])
+                    except:
+                        pass
+
+                    try:
+                        api_source.connecting_element=_from
+                    except:
+                        pass
+
+                    # try:
+                    #     api_transformer=PowerTransformer(model)
+                    # except:
+                    #     pass
+
+                    # try:
+                    #     api_transformer.is_substation=1
+                    # except:
+                    #     pass
+
+                    # try:
+                    #     api_transformer.name=sid
+                    # except:
+                    #     pass
+
+                    # try:
+                    #     api_transformer.rated_power=10**3*float(subs[sid]['mva'])
+                    # except:
+                    #     pass
+
+                    # try:
+                    #     api_transformer.from_element=_from
+                    # except:
+                    #     pass
+
+                    # try:
+                    #     api_transformer.to_element=_to
+                    # except:
+                    #     pass
+
+                    # for w in range(2):
+                    #     try:
+                    #         api_winding=Winding(model)
+                    #     except:
+                    #         pass
+
+                    #     try:
+                    #         api_winding.connection_type=self.transformer_connection_configuration_mapping(subs[sid]['conn'])
+                    #     except:
+                    #         pass
+
+                    #     try:
+                    #         api_winding.nominal_voltage=10**3*float(subs[sid]['kvll'])
+                    #     except:
+                    #         pass
+
+                    #     try:
+                    #         api_winding.rated_power=10**6*float(subs[sid]['mva'])
+                    #     except:
+                    #         pass
+
+                    #     for p in phases:
+                    #         try:
+                    #             api_phase_winding=PhaseWinding(model)
+                    #         except:
+                    #             pass
+
+                    #         try:
+                    #             api_phase_winding.phase=self.phase_mapping(p)
+                    #         except:
+                    #             pass
+
+                    #         api_winding.phase_windings.append(api_phase_winding)
+
+                    #     api_transformer.windings.append(api_winding)
 
 
 
     def parse_nodes(self, model):
-        '''Parse the nodes from CYME to DiTTo.
+        '''
+            Parse the nodes from CYME to DiTTo.
 
-:param model: DiTTo model
-:type model: DiTTo model
-
-'''
+            :param model: DiTTo model
+            :type model: DiTTo model
+        '''
         self._nodes=[]
 
         #Open the network file
@@ -982,10 +1085,10 @@ The user is then responsible to check the differences betweeen the two versions.
 
 
 
-    def configure_wire(self, model, conductor_data, spacing_data, phase, is_switch, is_fuse):
-        '''Helper function that creates a DiTTo wire object and configures it.
-
-'''
+    def configure_wire(self, model, conductor_data, spacing_data, phase, is_switch, is_fuse, is_open):
+        '''
+            Helper function that creates a DiTTo wire object and configures it.
+        '''
         #Instanciate the wire DiTTo object
         api_wire=Wire(model)
 
@@ -995,8 +1098,14 @@ The user is then responsible to check the differences betweeen the two versions.
         except:
             pass
 
+        try:
+            api_wire.nameclass=conductor_data['id']
+        except:
+            pass
+
         #Set the switch and fuse flags
         api_wire.is_switch=is_switch
+        api_wire.is_open = is_open
         api_wire.is_fuse=is_fuse
 
         #Set the diameter of the wire
@@ -1042,37 +1151,37 @@ The user is then responsible to check the differences betweeen the two versions.
 
 
     def parse_sections(self, model):
-        '''This function is responsible for parsing the sections. It is expecting the following structure:
-...
+        '''
+            This function is responsible for parsing the sections. It is expecting the following structure:
+            ...
 
-[SECTION]
-FORMAT_section=sectionid,fromnodeid,tonodeid,phase
-FORMAT_Feeder=networkid,headnodeid
-Feeder=feeder_1,head_feeder_1
-section_1_feeder_1,node_1,node_2,ABC
-...
-...
-Feeder=feeder_2,head_feeder_2
-section_1_feeder_2,node_1,node_2,ABC
-...
-...
+            [SECTION]
+            FORMAT_section=sectionid,fromnodeid,tonodeid,phase
+            FORMAT_Feeder=networkid,headnodeid
+            Feeder=feeder_1,head_feeder_1
+            section_1_feeder_1,node_1,node_2,ABC
+            ...
+            ...
+            Feeder=feeder_2,head_feeder_2
+            section_1_feeder_2,node_1,node_2,ABC
+            ...
+            ...
 
-**What is done in this function:**
+            **What is done in this function:**
 
-- We need to create a clear and fast mapping between feeders and sectionids
-- Same thing, mapping between sectionids and nodes/phases
-- Since we will be using these structures a lot in the reader, we need something fast that does not involve looping like crazy
+            - We need to create a clear and fast mapping between feeders and sectionids
+            - Same thing, mapping between sectionids and nodes/phases
+            - Since we will be using these structures a lot in the reader, we need something fast that does not involve looping like crazy
 
-**Data structures:**
+            **Data structures:**
 
-1) feeder_section_mapping: dictionary where keys are network_ids and values are lists of section id_s
-2) section_feeder_mapping: dictionary where keys are section ids and values are network_ids
-   (to perform the opposite query as 1) without having to look in every lists of section ids until we find the good one...)
-3) section_phase_mapping: dictionary where keys are section ids and values are tuples (node_1, node_2, phase)
+            1) feeder_section_mapping: dictionary where keys are network_ids and values are lists of section id_s
+            2) section_feeder_mapping: dictionary where keys are section ids and values are network_ids
+               (to perform the opposite query as 1) without having to look in every lists of section ids until we find the good one...)
+            3) section_phase_mapping: dictionary where keys are section ids and values are tuples (node_1, node_2, phase)
 
-.. warning:: This should be called prior to any other parser because the other parsers rely on these 3 data structures.
-
-'''
+            .. warning:: This should be called prior to any other parser because the other parsers rely on these 3 data structures.
+        '''
         self.feeder_section_mapping={}
         self.section_feeder_mapping={}
         self.section_phase_mapping ={}
@@ -1109,11 +1218,15 @@ section_1_feeder_2,node_1,node_2,ABC
                         format_section=list(map(lambda x:x.strip(), map(lambda x:x.lower(), line.split('=')[1].split(','))))
 
                     #Then, we grab the format used to define feeders
-                    elif 'format_feeder' in line.lower():
+                    elif 'format_feeder' in line.lower() or 'format_substation' in line.lower():
                         format_feeder=list(map(lambda x:x.strip(), map(lambda x:x.lower(), line.split('=')[1].split(','))))
 
                     #If we have a new feeder declaration
-                    elif len(line)>=7 and line[:7].lower()=='feeder=':
+                    elif len(line)>=7 and (line[:7].lower()=='feeder=' or line[:11].lower()=='substation='):
+                        if line[:7].lower() == 'feeder=':
+                            self.network_type = 'feeder'
+                        if line[:11].lower() == 'substation=':
+                            self.network_type = 'substation'
 
                         #We should have a format for sections and feeders,
                         #otherwise, raise an error...
@@ -1129,7 +1242,7 @@ section_1_feeder_2,node_1,node_2,ABC
                         #Check that the data obtained have the same length as the format provided
                         #otherwise, raise an error...
                         if len(feeder_data)!=len(format_feeder):
-                            raise ValueError('Feeder data length {a} does not match feeder format length {b}.'.format(a=len(feeder_data),b=len(format_feeder)))
+                            raise ValueError('Feeder/substation data length {a} does not match feeder format length {b}.'.format(a=len(feeder_data),b=len(format_feeder)))
 
                         #Check that we have a networkid in the format
                         #otherwise, raise an error...
@@ -1184,16 +1297,13 @@ section_1_feeder_2,node_1,node_2,ABC
                     line=next(self.content)
 
 
-
-
-
     def parse_lines(self, model):
-        '''Parse the lines from CYME to DiTTo.
+        '''
+            Parse the lines from CYME to DiTTo.
 
-:param model: DiTTo model
-:type model: DiTTo model
-
-'''
+            :param model: DiTTo model
+            :type model: DiTTo model
+        '''
         #Default mapp (positions if all fields are present in the format)
         #These numbers come from the CYME documentation (position of the fields)
         mapp_overhead={'sectionid':0,
@@ -1219,6 +1329,11 @@ section_1_feeder_2,node_1,node_2,ABC
                                           'coordx':14,
                                           'coordy':15}
         mapp_switch={'sectionid':0,
+                                 'eqid':2,
+                                 'coordx':7,
+                                 'coordy':8,
+                                 'closedphase':9}
+        mapp_sectionalizer={'sectionid':0,
                                  'eqid':2,
                                  'coordx':7,
                                  'coordy':8}
@@ -1276,6 +1391,13 @@ section_1_feeder_2,node_1,node_2,ABC
                         'gmr':2,
                         'amps':5,
                         'withstandrating':15}
+        mapp_cable={'id':0,
+                    'r1':1,
+                    'r0':2,
+                    'x1':3,
+                    'x0':4,
+                    'amps':7,
+                    }
         mapp_concentric_neutral_cable={'id':0,
                                                                    'r1':1,
                                                                    'r0':2,
@@ -1303,6 +1425,7 @@ section_1_feeder_2,node_1,node_2,ABC
         self.spacings={}
         self.conductors={}
         self.concentric_neutral_cable={}
+        self.cables={}
 
         #Instanciate the list in which we store the DiTTo line objects
         self._lines=[]
@@ -1380,9 +1503,21 @@ section_1_feeder_2,node_1,node_2,ABC
             #
             self.settings=self.update_dict(self.settings, self.parser_helper(line,
                                                   ['switch_settings'],
-                                                  ['sectionid', 'coordx', 'coordy', 'eqid'],
+                                                  ['sectionid', 'coordx', 'coordy', 'eqid','closedphase'],
                                                   mapp_switch,
                                                   {'type':'switch'}))
+
+            #########################################
+            #                                       #
+            #             SECTIONALIZER.            #
+            #                                       #
+            #########################################
+            #
+            self.settings=self.update_dict(self.settings, self.parser_helper(line,
+                                                  ['sectionalizer_settings'],
+                                                  ['sectionid', 'coordx', 'coordy', 'eqid'],
+                                                  mapp_sectionalizer,
+                                                  {'type':'sectionalizer'}))
 
             #########################################
             #                                       #
@@ -1417,7 +1552,7 @@ section_1_feeder_2,node_1,node_2,ABC
             #
             self.settings=self.update_dict(self.settings, self.parser_helper(line,
                                                   ['breaker_settings'],
-                                                  ['sectionid', 'coordx', 'coordy', 'eqid'],
+                                                  ['sectionid', 'coordx', 'coordy', 'eqid','closedphase'],
                                                   mapp_switch, #Same as switches
                                                   {'type':'breaker'}))
 
@@ -1512,6 +1647,17 @@ section_1_feeder_2,node_1,node_2,ABC
                                                             ['id', 'r1', 'r0', 'x1', 'x0', 'amps', 'phasecondid', 'neutralcondid'],
                                                             mapp_concentric_neutral_cable))
 
+            #########################################
+            #                                       #
+            #                 CABLE                 #
+            #                                       #
+            #########################################
+            #
+            self.cables.update( self.parser_helper(line,
+                                                            ['cable'],
+                                                            ['id', 'r1', 'r0', 'x1', 'x0', 'amps'],
+                                                            mapp_concentric_neutral_cable))
+
         #####################################################
         #                                                   #
         #       JOIN LISTS AND CREATE DITTO OBJECTS         #
@@ -1574,10 +1720,13 @@ section_1_feeder_2,node_1,node_2,ABC
                 pass
 
             #Set the line type
-            new_line['is_switch']=False
-            new_line['is_fuse']=False
-            new_line['is_recloser']=False
-            new_line['is_breaker']=False
+            new_line['is_switch']=0
+            new_line['is_fuse']=0
+            new_line['is_recloser']=0
+            new_line['is_breaker']=0
+            new_line['is_sectionalizer']=0
+            
+
             if 'type' in settings:
 
                 #Overhead lines
@@ -1590,10 +1739,30 @@ section_1_feeder_2,node_1,node_2,ABC
 
                 #Switch
                 elif 'switch' in settings['type']:
-                    new_line['is_switch']=True
+                    new_line['is_switch']=1
+                    new_line['wires']=[]
+                    total_closed = 0
+                    for p in phases+['N']:
+                        if p in settings['closedphase'] and settings['closedphase'].lower() != 'none':
+                            api_wire=self.configure_wire(model, {}, {}, p, True, False, False) # Assume a closed switch as default
+                            total_closed+=1
+                        elif p == 'N' and total_closed >= 1:
+                            api_wire=self.configure_wire(model, {}, {}, p, True, False, False) # Assume a closed switch as default
+
+                        else:
+                            api_wire=self.configure_wire(model, {}, {}, p, True, True, True) # Assume a closed switch as default
+                        new_line['wires'].append(api_wire)
+                    api_line=Line(model)
+                    for k,v in new_line.items():
+                        setattr(api_line,k,v)
+                    continue
+
+                #Sectionalizer
+                elif 'sectionalizer' in settings['type']:
+                    new_line['is_sectionalizer']=1
                     new_line['wires']=[]
                     for p in phases+['N']:
-                        api_wire=self.configure_wire(model, {}, {}, p, True, False)
+                        api_wire=self.configure_wire(model, {}, {}, p, False, False, False)
                         new_line['wires'].append(api_wire)
                     api_line=Line(model)
                     for k,v in new_line.items():
@@ -1602,10 +1771,10 @@ section_1_feeder_2,node_1,node_2,ABC
 
                 #Fuse
                 elif 'fuse' in settings['type']:
-                    new_line['is_fuse']=True
+                    new_line['is_fuse']=1
                     new_line['wires']=[]
                     for p in phases+['N']:
-                        api_wire=self.configure_wire(model, {}, {}, p, True, False)
+                        api_wire=self.configure_wire(model, {}, {}, p, False, True, False)
                         new_line['wires'].append(api_wire)
                     api_line=Line(model)
                     for k,v in new_line.items():
@@ -1614,10 +1783,10 @@ section_1_feeder_2,node_1,node_2,ABC
 
                 #recloser
                 elif 'recloser' in settings['type']:
-                    new_line['is_recloser']=True
+                    new_line['is_recloser']=1
                     new_line['wires']=[]
                     for p in phases+['N']:
-                        api_wire=self.configure_wire(model, {}, {}, p, True, False)
+                        api_wire=self.configure_wire(model, {}, {}, p, False, False, False)
                         new_line['wires'].append(api_wire)
                     api_line=Line(model)
                     for k,v in new_line.items():
@@ -1626,16 +1795,22 @@ section_1_feeder_2,node_1,node_2,ABC
 
                 #breaker
                 elif 'breaker' in settings['type']:
-                    new_line['is_breaker']=True
+                    new_line['is_breaker']=1
                     new_line['wires']=[]
+                    total_closed = 0
                     for p in phases+['N']:
-                        api_wire=self.configure_wire(model, {}, {}, p, True, False)
+                        if p in settings['closedphase'] and settings['closedphase'].lower() != 'none':
+                            total_closed+=1
+                            api_wire=self.configure_wire(model, {}, {}, p, False, False, False)
+                        elif p == 'N' and total_closed >= 1:
+                            api_wire=self.configure_wire(model, {}, {}, p, False, False, False) # Assume a closed switch as default
+                        else:
+                            api_wire=self.configure_wire(model, {}, {}, p, False, False, True) # Assume a closed switch as default
                         new_line['wires'].append(api_wire)
                     api_line=Line(model)
                     for k,v in new_line.items():
                         setattr(api_line,k,v)
                     continue
-
 
             line_data=None
             #If we have a linecableid for the current section
@@ -1650,6 +1825,10 @@ section_1_feeder_2,node_1,node_2,ABC
                 if settings['linecableid'] in self.concentric_neutral_cable:
                     #Cache the line data
                     line_data=self.concentric_neutral_cable[settings['linecableid']]
+                    line_data['type']='balanced_line'
+                if settings['linecableid'] in self.cables:
+                    logger.debug('cables {}'.format(sectionID))
+                    line_data=self.cables[settings['linecableid']]
                     line_data['type']='balanced_line'
 
             #We might have a device number instead if we are dealing with BY PHASE settings
@@ -1666,12 +1845,13 @@ section_1_feeder_2,node_1,node_2,ABC
                 if settings['devicenumber'] in self.concentric_neutral_cable:
                     line_data=self.concentric_neutral_cable[settings['devicenumber']]
                     line_data['type']='balanced_line'
-                elif 'condid_a' in settings and 'condid_b' in settings and 'condid_c' in settings and 'condid_n1' in settings and 'spacingid' in settings:
-                    line_data={'type':'unbalanced_spacing_conf'}
+                elif 'condid_a' in settings and 'condid_b' in settings and 'condid_c' in settings and 'spacingid' in settings:
+                    if 'condid_n' in settings or 'condid_n1' in settings:
+                        line_data={'type':'unbalanced_spacing_conf'}
 
             if line_data is None:
                 if not 'phase' in settings.keys():
-                    print('WARNING:: Skipping Line {} !'.format(sectionID))
+                    logger.warning('WARNING:: Skipping Line {} !'.format(sectionID))
                 continue
             else:
                 impedance_matrix=None
@@ -1693,20 +1873,20 @@ section_1_feeder_2,node_1,node_2,ABC
                         #One phase line
                         if len(phases)==1:
 
-                            impedance_matrix=[[coeff*complex(float(line_data['r0']),float(line_data['x0']))]]
+                            impedance_matrix=[[1./3.0*coeff*complex(float(line_data['r0']),float(line_data['x0']))]]
 
                         #Two phase line
                         elif len(phases)==2:
 
-                            a=coeff*complex(2*float(line_data['r1'])+float(line_data['r0']), 2*float(line_data['x1'])+float(line_data['x0']))
-                            b=coeff*complex(float(line_data['r0'])-float(line_data['r1']), float(line_data['x0'])-float(line_data['x1']))
+                            a=1./3.0*coeff*complex(2*float(line_data['r1'])+float(line_data['r0']), 2*float(line_data['x1'])+float(line_data['x0']))
+                            b=1./3.0*coeff*complex(float(line_data['r0'])-float(line_data['r1']), float(line_data['x0'])-float(line_data['x1']))
                             impedance_matrix=[[a,b],[b,a]]
 
                         #Three phase line
                         else:
 
-                            a=coeff*complex(2*float(line_data['r1'])+float(line_data['r0']), 2*float(line_data['x1'])+float(line_data['x0']))
-                            b=coeff*complex(float(line_data['r0'])-float(line_data['r1']), float(line_data['x0'])-float(line_data['x1']))
+                            a=1./3.0*coeff*complex(2*float(line_data['r1'])+float(line_data['r0']), 2*float(line_data['x1'])+float(line_data['x0']))
+                            b=1./3.0*coeff*complex(float(line_data['r0'])-float(line_data['r1']), float(line_data['x0'])-float(line_data['x1']))
                             impedance_matrix=[[a,b,b],[b,a,b],[b,b,a]]
                     except:
                         pass
@@ -1725,10 +1905,13 @@ section_1_feeder_2,node_1,node_2,ABC
                     else:
                         spacing_data={}
 
+                    if conductor_data=={} and 'linecableid' in line_data:
+                        conductor_data=self.conductors[line_data['linecableid']]
+
                     #Loop over the phases and create the wires
                     new_line['wires']=[]
                     for phase in phases:
-                        api_wire=self.configure_wire(model, conductor_data, spacing_data, phase, False, False)
+                        api_wire=self.configure_wire(model, conductor_data, spacing_data, phase, False, False, False)
                         new_line['wires'].append(api_wire)
 
                     #Handle the neutral conductor
@@ -1743,7 +1926,7 @@ section_1_feeder_2,node_1,node_2,ABC
                     else:
                         spacing_data={}
 
-                    api_wire=self.configure_wire(model, conductor_data, spacing_data, 'N', False, False)
+                    api_wire=self.configure_wire(model, conductor_data, spacing_data, 'N', False, False, False)
                     new_line['wires'].append(api_wire)
 
 
@@ -1802,7 +1985,7 @@ section_1_feeder_2,node_1,node_2,ABC
                         else:
                             spacing_data={}
 
-                        api_wire=self.configure_wire(model, conductor_data, spacing_data, phase, False, False)
+                        api_wire=self.configure_wire(model, conductor_data, spacing_data, phase, False, False, False)
                         new_line['wires'].append(api_wire)
 
                     #Handle the neutral conductors
@@ -1828,20 +2011,20 @@ section_1_feeder_2,node_1,node_2,ABC
                         conductor_n1_data=self.conductors[line_data['condid_n1']]
                         conductor_n2_data=self.conductors[line_data['condid_n2']]
 
-                        api_wire_n1=self.configure_wire(model, conductor_n1_data, spacing_data, 'N1', False, False)
-                        api_wire_n2=self.configure_wire(model, conductor_n2_data, spacing_data, 'N2', False, False)
+                        api_wire_n1=self.configure_wire(model, conductor_n1_data, spacing_data, 'N1', False, False, False)
+                        api_wire_n2=self.configure_wire(model, conductor_n2_data, spacing_data, 'N2', False, False, False)
                         new_line['wires'].append(api_wire_n1)
                         new_line['wires'].append(api_wire_n2)
 
                     elif 'condid_n' in line_data and line_data['condid_n'].lower()!='none' and line_data['condid_n'] in self.conductors:
                         conductor_data=self.conductors[line_data['condid_n']]
-                        api_wire=self.configure_wire(model, conductor_data, spacing_data, 'N', False, False)
+                        api_wire=self.configure_wire(model, conductor_data, spacing_data, 'N', False, False, False)
                         new_line['wires'].append(api_wire)
 
                     else:
                         if('condid_n1' in line_data and line_data['condid_n1'].lower()!='none' and line_data['condid_n1'] in self.conductors):
                             conductor_data=self.conductors[line_data['condid_n1']]
-                            api_wire=self.configure_wire(model, conductor_data, spacing_data, 'N', False, False)
+                            api_wire=self.configure_wire(model, conductor_data, spacing_data, 'N', False, False, False)
                             new_line['wires'].append(api_wire)
 
 
@@ -1881,7 +2064,7 @@ section_1_feeder_2,node_1,node_2,ABC
                                 pos[-1][1]=float(spacing_data['posofneutralcond_n2_y'])
                             except:
                                 pass
-                        
+
 
                         valid_cond=[]
                         ph_list=['a','b','c','n1','n2']
@@ -1898,33 +2081,59 @@ section_1_feeder_2,node_1,node_2,ABC
                         gmr_list=[]
                         resistance_list=[]
 
+                        perform_kron_reduction=True
+
                         #Get GMR and resistance of valid conductor
                         for idx,p in enumerate(phases):
                             if 'condid_{}'.format(p.lower()) in settings and settings['condid_{}'.format(p.lower())] in self.conductors:
                                 gmr_list.append(0.0328084*float(self.conductors[settings['condid_{}'.format(p.lower())]]['gmr']))
                                 resistance_list.append(1.0/0.621371*float(self.conductors[settings['condid_{}'.format(p.lower())]]['r25']))
                             else:
-                                gmr_list.append(None)
-                                resistance_list.append(None)
+                                logger.warning('Could not find conductor {name}. Using DEFAULT...'.format(name='condid_{}'.format(p.lower())))
+                                gmr_list.append(0.0328084*float(self.conductors['DEFAULT']['gmr']))
+                                resistance_list.append(1.0/0.621371*float(self.conductors['DEFAULT']['r25']))
+                                #gmr_list.append(None)
+                                #resistance_list.append(None)
                         if 'condid_n' in settings:
-                            gmr_list.append(0.0328084*float(self.conductors[settings['condid_n']]['gmr']))
-                            resistance_list.append(1.0/0.621371*float(self.conductors[settings['condid_n']]['r25']))
+                            if settings['condid_n'] in self.conductors:
+                                gmr_list.append(0.0328084*float(self.conductors[settings['condid_n']]['gmr']))
+                                resistance_list.append(1.0/0.621371*float(self.conductors[settings['condid_n']]['r25']))
+                            else:
+                                logger.warning('Could not find neutral conductor {name}. Using DEFAULT...'.format(name=settings['condid_n']))
+                                gmr_list.append(0.0328084*float(self.conductors['DEFAULT']['gmr']))
+                                resistance_list.append(1.0/0.621371*float(self.conductors['DEFAULT']['r25']))
                         elif 'condid_n1' in settings and settings['condid_n1'] is not None and settings['condid_n1'].lower()!='none':
-                            gmr_list.append(0.0328084*float(self.conductors[settings['condid_n1']]['gmr']))
-                            resistance_list.append(1.0/0.621371*float(self.conductors[settings['condid_n1']]['r25']))
+                            if settings['condid_n1'] in self.conductors:
+                                gmr_list.append(0.0328084*float(self.conductors[settings['condid_n1']]['gmr']))
+                                resistance_list.append(1.0/0.621371*float(self.conductors[settings['condid_n1']]['r25']))
+                            else:
+                                logger.warning('Could not find neutral conductor {name}. Using DEFAULT...'.format(name=settings['condid_n1']))
+                                gmr_list.append(0.0328084*float(self.conductors['DEFAULT']['gmr']))
+                                resistance_list.append(1.0/0.621371*float(self.conductors['DEFAULT']['r25']))
                         else:
                             gmr_list.append(None)
                             resistance_list.append(None)
+                            perform_kron_reduction=False
 
                         gmr_list=np.array(gmr_list)
                         resistance_list=np.array(resistance_list)
                         idx_to_remove=np.argwhere(gmr_list==None).flatten()
                         idx_to_keep=[idx for idx in range(len(distance_matrix)) if idx not in idx_to_remove]
-                        distance_matrix=distance_matrix[idx_to_keep,:]
+                        try:
+                            distance_matrix=distance_matrix[idx_to_keep,:][:,idx_to_keep]
+                        except IndexError:
+                            #It can happen that a one phase line is defined with a spacing table where no position are defined.
+                            #This is uncommon but raises an IndexError here.
+                            #To avoid that, use a dummy distance matrix
+                            distance_matrix=np.array([[1]])
+                            pass
 
                         primitive_imp_matrix=self.get_primitive_impedance_matrix(distance_matrix,gmr_list,resistance_list)
 
-                        phase_imp_matrix=1.0/1609.34*self.kron_reduction(primitive_imp_matrix)
+                        if perform_kron_reduction:
+                            phase_imp_matrix=1.0/1609.34*self.kron_reduction(primitive_imp_matrix)
+                        else:
+                            phase_imp_matrix=1.0/1609.34*primitive_imp_matrix
 
                         impedance_matrix=phase_imp_matrix.tolist()
 
@@ -1942,12 +2151,14 @@ section_1_feeder_2,node_1,node_2,ABC
                         else:
                             spacing_data={}
 
-                        api_wire=self.configure_wire(model, conductor_data, spacing_data, phase, False, False)
+                        api_wire=self.configure_wire(model, conductor_data, spacing_data, phase, False, False, False)
                         new_line['wires'].append(api_wire)
 
                     #Handle the neutral conductors
-                    if 'condid_n' in settings and settings['condid_n'] in self.conductors:
+                    if 'condid_n' in settings and settings['condid_n'] is not None and settings['condid_n']!='' and settings['condid_n']!='NONE' and settings['condid_n'] in self.conductors:
                         conductor_data=self.conductors[settings['condid_n']]
+                    elif 'condid_n1' in settings and settings['condid_n1'] is not None and settings['condid_n1']!='' and settings['condid_n1']!='NONE' and settings['condid_n1'] in self.conductors:
+                        conductor_data=self.conductors[settings['condid_n1']]
                     else:
                         conductor_data={}
 
@@ -1957,8 +2168,9 @@ section_1_feeder_2,node_1,node_2,ABC
                     else:
                         spacing_data={}
 
-                    api_wire=self.configure_wire(model, conductor_data, spacing_data, 'N', False, False)
-                    new_line['wires'].append(api_wire)
+                    if len(conductor_data)!=0:
+                        api_wire=self.configure_wire(model, conductor_data, spacing_data, 'N', False, False, False)
+                        new_line['wires'].append(api_wire)
 
                 try:
                     new_line['impedance_matrix']=impedance_matrix
@@ -1976,14 +2188,10 @@ section_1_feeder_2,node_1,node_2,ABC
 
 
 
-
-
-
     def parse_capacitors(self, model):
-        '''Parse the capacitors from CYME to DiTTo.
-
-'''
-
+        '''
+            Parse the capacitors from CYME to DiTTo.
+        '''
         #Instanciate the list in which we store the DiTTo capacitor objects
         self._capacitors=[]
 
@@ -2222,12 +2430,11 @@ section_1_feeder_2,node_1,node_2,ABC
 
 
 
-
-
     def parse_transformers(self, model):
-        '''Parse the transformers from CYME to DiTTo.
-
-'''
+        '''
+            Parse the transformers from CYME to DiTTo. Since substation transformer can have LTCs attached,
+            when parsing a transformer, we may also create a regulator. LTCs are represented as regulators.
+        '''
         #Instanciate the list in which we store the DiTTo transformer objects
         self._transformers=[]
 
@@ -2242,6 +2449,10 @@ section_1_feeder_2,node_1,node_2,ABC
                                                    'kva':3,
                                                    'connection_configuration':18,
                                                    'noloadlosses':32,
+                                                   'isltc':21,
+                                                   'taps':22,
+                                                   'lowerbandwidth':23,
+                                                   'upperbandwidth':24,
                                                    }
         mapp_grounding_transformer_settings={'sectionid':0,
                                                                    'equipmentid':6,
@@ -2302,6 +2513,8 @@ section_1_feeder_2,node_1,node_2,ABC
                                                            'secondarytap':11,
                                                            'primarybasevoltage':17,
                                                            'secondarybasevoltage':18,
+                                                           'maxbuck':29,
+                                                           'maxboost':30,
                                                            'phaseon':37,
                                                                 }
         mapp_transformer={'id':0,
@@ -2315,6 +2528,10 @@ section_1_feeder_2,node_1,node_2,ABC
                                           'xr0':13,
                                           'conn':18,
                                           'noloadlosses':34,
+                                          'isltc':23,
+                                          'taps':24,
+                                          'lowerbandwidth':25,
+                                          'upperbandwidth':26,
                                           'phaseshift':41,
                                         }
         mapp_phase_shifter_transformer_settings={'sectionid':0,
@@ -2398,7 +2615,7 @@ section_1_feeder_2,node_1,node_2,ABC
             #
             self.settings.update( self.parser_helper(line,
                                                           ['transformer_settings'],
-                                                          ['sectionid', 'eqid', 'coordx', 'coordy', 'primaryfixedtapsetting', 'secondaryfixedtapsetting', 'tertiaryfixedtapsetting', 'primarybasevoltage', 'secondarybasevoltage', 'tertiarybasevoltage'],
+                                                          ['sectionid', 'eqid', 'coordx', 'coordy', 'primaryfixedtapsetting', 'secondaryfixedtapsetting', 'tertiaryfixedtapsetting', 'primarybasevoltage', 'secondarybasevoltage', 'tertiarybasevoltage','maxbuck','maxboost'],
                                                           mapp_transformer_settings,
                                                           {'type':'transformer'}))
 
@@ -2434,7 +2651,7 @@ section_1_feeder_2,node_1,node_2,ABC
             #
             self.auto_transformers.update( self.parser_helper(line,
                                                           ['auto_transformer'],
-                                                          ['id', 'kva', 'connection_configuration','noloadlosses'],
+                                                          ['id', 'kva', 'connection_configuration','noloadlosses','isltc','taps','lowerbandwidth','upperbandwidth'],
                                                           mapp_auto_transformer) )
 
             #########################################
@@ -2454,6 +2671,7 @@ section_1_feeder_2,node_1,node_2,ABC
             #                                       #
             #########################################
             #
+            # LTC controls not yet supported for three-winding transformers
             self.three_winding_auto_transformers.update( self.parser_helper(line,
                                                           ['three_winding_auto_transformer'],
                                                           ['id', 'primaryratedcapacity', 'primaryvoltage', 'secondaryratedcapacity', 'secondaryvoltage', 'tertiaryratedcapacity', 'tertiaryvoltage', 'noloadlosses'],
@@ -2465,6 +2683,7 @@ section_1_feeder_2,node_1,node_2,ABC
             #                                       #
             #########################################
             #
+            # LTC controls not yet supported for three-winding transformers
             self.three_winding_transformers.update( self.parser_helper(line,
                                                           ['three_winding_transformer'],
                                                           ['id', 'primaryratedcapacity', 'primaryvoltage', 'secondaryratedcapacity', 'secondaryvoltage', 'tertiaryratedcapacity', 'tertiaryvoltage', 'noloadlosses'],
@@ -2478,7 +2697,7 @@ section_1_feeder_2,node_1,node_2,ABC
             #
             self.transformers.update( self.parser_helper(line,
                                                       ['transformer'],
-                                                      ['id', 'type', 'kva', 'kvllprim', 'kvllsec', 'z1', 'z0', 'xr', 'xr0', 'conn', 'noloadlosses', 'phaseshift'],
+                                                      ['id', 'type', 'kva', 'kvllprim', 'kvllsec', 'z1', 'z0', 'xr', 'xr0', 'conn', 'noloadlosses', 'phaseshift','isltc','taps','lowerbandwidth','upperbandwidth'],
                                                       mapp_transformer) )
 
         for sectionID, settings in self.settings.items():
@@ -2492,10 +2711,10 @@ section_1_feeder_2,node_1,node_2,ABC
                 raise ValueError('Unable to instanciate PowerTransformer DiTTo object.')
 
             #Set the name
-            #try:
-            api_transformer.name='Trans_'+settings['sectionid']
-            #except:
-            #pass
+            try:
+                api_transformer.name='Trans_'+settings['sectionid']
+            except:
+                pass
 
             api_transformer.feeder_name=self.section_feeder_mapping[sectionID]
 
@@ -2614,8 +2833,49 @@ section_1_feeder_2,node_1,node_2,ABC
                 R_perc=Z_perc.real / 2.0
                 xhl=Z_perc.imag
 
+                #Check if it's an LTC
+                #
+                if 'isltc' in transformer_data and transformer_data['isltc']:
+                    #Instanciate a Regulator DiTTo object
+                    try:
+                        api_regulator=Regulator(model)
+                    except:
+                        raise ValueError('Unable to instanciate Regulator DiTTo object.')
+
+                    try:
+                        api_regulator.name = 'Reg_'+settings['sectionid']
+                    except:
+                        pass
+                    api_regulator.feeder_name=self.section_feeder_mapping[sectionID]
+
+                    try:
+                        api_regulator.connected_transformer = api_transformer.name
+                    except:
+                        raise ValueError("Unable to connect LTC to transformer")
+
+
+                    taps = float(transformer_data['taps'])
+                    lowerbandwidth = float(transformer_data['lowerbandwidth'])
+                    upperbandwidth = float(transformer_data['upperbandwidth'])
+                    minreg_range = int(float(settings['maxbuck']))
+                    maxreg_range = int(float(settings['maxboost']))
+                    center_bandwidth = upperbandwidth - lowerbandwidth
+
+                    api_regulator.ltc = 1
+                    api_regulator.highstep = minreg_range
+                    api_regulator.lowstep = maxreg_range
+                    api_regulator.center_bandwidth = center_bandwidth
+                    api_regulator.bandwidth = (upperbandwidth+lowerbandwidth) # ie. use the average bandwidth. The upper and lower are typically the same
+                    #TODO: Add unit checking. These units are in percentages. Need to be updated to be in Volts for consistency (BUG in cyme writer too)
+                    #TODO: Decide whether or not to put parameters in for the regulator range, and what units they should be.
+
+
+                    
+
+
+
                 try:
-                    api_transformer.reactances.append(xhl)
+                    api_transformer.reactances = [float(xhl)]
                 except:
                     pass
 
@@ -2664,10 +2924,10 @@ section_1_feeder_2,node_1,node_2,ABC
                             raise ValueError('Unable to instanciate PhaseWinding DiTTo object.')
 
                         #Set the phase
-                        #try:
-                        api_phase_winding.phase=p
-                        #except:
-                        #pass
+                        try:
+                            api_phase_winding.phase=p
+                        except:
+                            pass
 
                         #Add the phase winding object to the winding
                         api_winding.phase_windings.append(api_phase_winding)
@@ -2742,19 +3002,16 @@ section_1_feeder_2,node_1,node_2,ABC
 
 
 
-
-
-
     def parse_regulators(self, model):
-        '''Parse the regulators from CYME to DiTTo.
+        '''
+            Parse the regulators from CYME to DiTTo.
 
-.. note::
+            .. note::
 
-In CYME a regulator does not have to be associated with a transformer (as it is the case for OpenDSS for example).
-In addition, a regulator can monitor multiple phases.
-The parser should create the transformers and create separate regulator objects for different phases.
-
-'''
+            In CYME a regulator does not have to be associated with a transformer (as it is the case for OpenDSS for example).
+            In addition, a regulator can monitor multiple phases.
+            The parser should create the transformers and create separate regulator objects for different phases.
+        '''
         #Instanciate the list in which we store the DiTTo regulator objects
         self._regulators=[]
 
@@ -2850,7 +3107,7 @@ The parser should create the transformers and create separate regulator objects 
             for p in phases_on:
 
                 if p not in phases:
-                    raise ValueError('Regulator {id} monitors phase {p} which is not in the section phases {pp}'.format(id=sectionID, p=p, pp=phases))
+                    logger.warning('Regulator {id} monitors phase {p} which is not in the section phases {pp}'.format(id=sectionID, p=p, pp=phases))
 
                 #Instanciate a Regulator DiTTo object
                 try:
@@ -2973,15 +3230,10 @@ The parser should create the transformers and create separate regulator objects 
 
         return 1
 
-
-
-
-
-
     def parse_loads(self, model):
-        '''Parse the loads from CYME to DiTTo.
-
-'''
+        '''
+            Parse the loads from CYME to DiTTo.
+        '''
         #Instanciate the list in which we store the DiTTo load objects
         self._loads={}
 
@@ -3001,7 +3253,8 @@ The parser should create the transformers and create separate regulator objects 
                                                  'loadphase':12,
                                                  'value1':13,
                                                  'value2':14,
-                                                 'connectedkva':15
+                                                 'connectedkva':15,
+                                                 'numberofcustomer':17
                                                  }
 
         mapp_customer_class={'id':0,
@@ -3053,7 +3306,7 @@ The parser should create the transformers and create separate regulator objects 
             #
             self.customer_loads.update( self.parser_helper(line,
                                                         ['customer_loads'],
-                                                        ['sectionid', 'devicenumber', 'loadtype', 'customernumber', 'customertype', 'loadmodelid', 'valuetype', 'loadphase', 'value1', 'value2', 'connectedkva'],
+                                                        ['sectionid', 'devicenumber', 'loadtype', 'customernumber', 'customertype', 'loadmodelid', 'valuetype', 'loadphase', 'value1', 'value2', 'connectedkva','numberofcustomer'],
                                                         mapp_customer_loads) )
 
             #########################################
@@ -3067,7 +3320,6 @@ The parser should create the transformers and create separate regulator objects 
                                                         ['id', 'constantpower', 'constantcurrent', 'constantimpedance', 'powerfactor','constantimpedancezp', 'constantimpedancezq', 'constantcurrentip', 'constantcurrentiq', 'constantpowerpp', 'constantpowerpq'],
                                                         mapp_customer_class) )
 
-        import math
         for sectionID, settings in self.customer_loads.items():
 
             sectionID=sectionID.strip('*').lower()
@@ -3076,6 +3328,11 @@ The parser should create the transformers and create separate regulator objects 
                 load_data=self.loads[sectionID]
             else:
                 load_data={}
+
+            if 'connectedkva' in settings:
+                connectedkva = float(settings['connectedkva'])
+            else:
+                connectedkva = None
 
             if 'valuetype' in settings:
                 value_type=int(settings['valuetype'])
@@ -3087,7 +3344,7 @@ The parser should create the transformers and create separate regulator objects 
                     try:
                         p,q=float(settings['value1']), float(settings['value2'])
                     except:
-                        print('WARNING:: Skipping load on section {}'.format(sectionID))
+                        logger.warning('WARNING:: Skipping load on section {}'.format(sectionID))
                         continue
                 elif value_type==1: #KVA and PF are given
                     try:
@@ -3097,25 +3354,27 @@ The parser should create the transformers and create separate regulator objects 
                         p=kva*PF
                         q=math.sqrt(kva**2-p**2)
                     except:
-                        print('WARNING:: Skipping load on section {}'.format(sectionID))
+                        logger.warning('WARNING:: Skipping load on section {}'.format(sectionID))
                         continue
                 elif value_type==2: #P and PF are given
-                    #try:
-                    p,PF=float(settings['value1']), float(settings['value2'])
-                    if 0<=PF<=1:
-                        q=p*math.sqrt((1-PF**2)/PF**2)
-                    elif 1<PF<=100:
-                        PF/=100.0
-                        q=p*math.sqrt((1-PF**2)/PF**2)
-                    else:
-                        print('problem with PF')
-                        print(PF)
-                    #except:
-                    #print('WARNING:: Skipping load on section {}'.format(sectionID))
-                    #continue
+
+                    try:
+                        p,PF=float(settings['value1']), float(settings['value2'])
+                        if 0<=PF<=1:
+                            q=p*math.sqrt((1-PF**2)/PF**2)
+                        elif 1<PF<=100:
+                            PF/=100.0
+                            q=p*math.sqrt((1-PF**2)/PF**2)
+                        else:
+                            logger.warning('problem with PF')
+                            logger.warning(PF)
+                    except:
+                        logger.warning('Skipping load on section {}'.format(sectionID))
+                        continue
+
                 elif value_type==3: #AMP and PF are given
                     #TODO
-                    print('WARNING:: Skipping load on section {}'.format(sectionID))
+                    logger.warning('WARNING:: Skipping load on section {}'.format(sectionID))
                     continue
 
                 if p>=0 or q>=0:
@@ -3136,10 +3395,22 @@ The parser should create the transformers and create separate regulator objects 
                         if fusion:
                             api_load.name+='_'+reduce(lambda x,y:x+'_'+y, phases)
                         else:
-                            api_load.name=sectionID+'_'+reduce(lambda x,y:x+'_'+y, phases)
+                            api_load.name='Load_'+sectionID+'_'+reduce(lambda x,y:x+'_'+y, phases)
                     except:
                         pass
 
+                    try:
+                        if not fusion:
+                            if connectedkva is not None:                            
+                                api_load.transformer_connected_kva = connectedkva
+                        elif connectedkva is not None:
+                            if api_load.transformer_connected_kva is None:
+                                api_load.transformer_connected_kva = connectedkva
+                            else:
+                                api_load.transformer_connected_kva += connectedkva            
+                    except:
+                        pass
+                    
                     try:
                         if not fusion:
                             api_load.connection_type=self.connection_configuration_mapping(load_data['connection'])
@@ -3159,6 +3430,9 @@ The parser should create the transformers and create separate regulator objects 
                         pass
 
                     api_load.feeder_name=self.section_feeder_mapping[sectionID]
+
+                    api_load.num_users=float(settings['numberofcustomer'])
+
 
                     for ph in phases:
                         try:

@@ -1,15 +1,19 @@
 from __future__ import absolute_import, division, print_function
 from builtins import super, range, zip, round, map
 
+import logging
+
 import networkx as nx
 import numpy as np
 import copy
 import time
+import random
 
 from ditto.models.powertransformer import PowerTransformer
 from ditto.models.load import Load
 from ditto.models.node import Node
 from ditto.models.line import Line
+from ditto.models.position import Position
 from ditto.models.power_source import PowerSource
 
 from ditto.models.feeder_metadata import Feeder_metadata
@@ -17,6 +21,7 @@ from ditto.models.feeder_metadata import Feeder_metadata
 from ditto.modify.modify import Modifier
 from ditto.network.network import Network
 
+logger = logging.getLogger(__name__)
 
 class system_structure_modifier(Modifier):
     '''This class implements all methods modifying the topology of a DiTTo model.
@@ -31,7 +36,7 @@ Author: Nicolas Gensollen. December 2017.
 
 '''
 
-    def __init__(self, model, source):
+    def __init__(self, model, *args):
         '''Class CONSTRUCTOR.
 
 :param model: DiTTo model on which to perform modifications
@@ -44,6 +49,21 @@ Author: Nicolas Gensollen. December 2017.
 '''
         #Store the model as attribute
         self.model = model
+
+        if len(args)==1:
+            source=args[0]
+        else:
+            srcs = []
+            for obj in self.model.models:
+                if isinstance(obj, PowerSource) and obj.is_sourcebus == 1:
+                    srcs.append(obj.name)
+            srcs = np.unique(srcs)
+            if len(srcs)==0:
+                raise ValueError('No PowerSource object found in the model.')
+            elif len(srcs)>1:
+                raise ValueError('Mupltiple sourcebus found: {srcs}'.format(srcs=srcs))
+            else:
+                source = srcs[0]
 
         #Store the source name as attribute
         self.source = source
@@ -64,6 +84,7 @@ Author: Nicolas Gensollen. December 2017.
         self.G = Network()
         self.G.build(self.model, source=self.source)
 
+        self.model.set_names()
         #Set the attributes in the graph
         self.G.set_attributes(self.model)
 
@@ -72,6 +93,65 @@ Author: Nicolas Gensollen. December 2017.
         #Equipment types and names on the edges
         self.edge_equipment = nx.get_edge_attributes(self.G.graph, 'equipment')
         self.edge_equipment_name = nx.get_edge_attributes(self.G.graph, 'equipment_name')
+
+       
+    def set_missing_coords_recur(self):
+        ''' Identify nodes that don't have coordinates set and set them to be the
+            average of the existing position values of the neighboring nodes. 
+            If no adjacent nodes have positional values continue to compute recursively (via while loop)
+        '''
+        recur_nodes = []
+        for i in self.model.models:
+            if hasattr(i,'positions') and (i.positions is None or len(i.positions) == 0 or i.positions[0].lat ==0 or i.positions[0].long ==0) and (hasattr(i,'name') and i.name is not None):
+                if i.name in self.G.graph.nodes(): # Only find coords of missing nodes - not edges
+                    recur_nodes.append(i.name) # Should be passing the reference to the node
+
+        while(len(recur_nodes)>0):
+            next_recur = []
+            for i in recur_nodes:
+                adj_lats_longs = []
+                for j_name in self.G.graph.neighbors(i):
+                    j = self.model[j_name]
+                    if hasattr(j,'positions') and j.positions is not None and len(j.positions) != 0 and j.positions[0].lat !=0 and j.positions[0].long !=0:
+                        adj_lats_longs.append((j.positions[0].lat,j.positions[0].long))
+    
+                if len(adj_lats_longs) == 0:
+                    next_recur.append(i)
+                else:
+                    av_lat = 0
+                    av_long = 0
+                    num = 0
+                    for element in adj_lats_longs:
+                        av_lat += element[0]
+                        av_long += element[1]
+                        num +=1
+                    av_lat = av_lat/float(num)
+                    av_long = av_long/float(num)
+                    computed_pos = Position(self.model)
+                    computed_pos.lat = av_lat
+                    computed_pos.long = av_long
+                    self.model[i].positions = [computed_pos]
+            if len(next_recur) == len(recur_nodes):
+                for i in recur_nodes:
+                    logger.warning('Unable to compute coordinates for {}'.format(i))
+                    print('Unable to compute coordinates for {}'.format(i))
+                return
+            recur_nodes = next_recur
+                    
+
+            
+    def set_feeder_metadata(self, feeder_name=None, substation=None, transformer=None):
+        ''' This function sets the feeder metada and adds it to the model
+            This can be used when parsing a file with feeder information to 
+            Add feeder data to the model
+        '''
+        feeder_metadata = Feeder_metadata(self.model)
+        feeder_metadata.name = feeder_name
+        feeder_metadata.transformer = transformer
+        feeder_metadata.substation = substation
+
+
+
 
     def set_feeder_headnodes(self):
         '''This function sets the headnode for the feeder_metadata.
@@ -90,15 +170,15 @@ If this convention changes, this function might need to be updated...
                 if name_cleaned in headnodes:
                     obj.headnode = name_cleaned #This should not be the case because of name conflicts
                 else:
-                    cleaned_headnodes = [h.strip('_s') for h in headnodes]
+                    cleaned_headnodes = [h.strip('%') for h in headnodes]
 
                     if name_cleaned in cleaned_headnodes:
                         obj.headnode = headnodes[cleaned_headnodes.index(name_cleaned)]
                     else:
                         reverse_headnodes = []
                         for headnode in cleaned_headnodes:
-                            if '->' in headnode:
-                                a, b = headnode.split('->')
+                            if '>' in headnode:
+                                a, b = headnode.split('>')
                                 reverse_headnodes.append(b + '->' + a)
                             else:
                                 reverse_headnodes.append(headnode)
@@ -252,7 +332,7 @@ Each object has an attribute 'substation_name' which is then set to the name of 
                     skip = False
                     for down_elt in downstream_elts:
                         if hasattr(down_elt, 'is_substation') and down_elt.is_substation == 1:
-                            print('Info: substation {a} found downstream of substation {b}'.format(b=elt.name, a=down_elt.name))
+                            logger.debug('Info: substation {a} found downstream of substation {b}'.format(b=elt.name, a=down_elt.name))
                             skip = True
                             break
                     #If no substation was found downstream, then set the substation_name and feeder_name attributes of the objects
@@ -288,11 +368,11 @@ If the cut was done properly, we shouldn't have elements in multiple feeders.
 '''
         #Number of feeders
         N_feeder = len(self._list_of_feeder_objects)
-        print('Number of feeders defined = {}'.format(N_feeder))
+        logger.debug('Number of feeders defined = {}'.format(N_feeder))
 
         #Size distribution
         feeder_sizes = list(map(len, self._list_of_feeder_objects))
-        print('Sizes of the feeders = {}'.format(feeder_sizes))
+        logger.debug('Sizes of the feeders = {}'.format(feeder_sizes))
 
         #Intersections (should be empty...)
         for i, f1 in enumerate(self._list_of_feeder_objects):
@@ -302,9 +382,9 @@ If the cut was done properly, we shouldn't have elements in multiple feeders.
                     f2_set = set(f2)
                     intersection = f1_set.intersection(f2_set)
                     if len(intersection) != 0:
-                        print('=' * 40)
-                        print('Feeder {n} and feeder {m} intersect:'.format(n=i, m=j))
-                        print(intersection)
+                        logger.debug('=' * 40)
+                        logger.debug('Feeder {n} and feeder {m} intersect:'.format(n=i, m=j))
+                        logger.debug(intersection)
 
     def set_nominal_voltages(self):
         '''This function does the exact same thing as _set_nominal_voltages.
@@ -533,10 +613,10 @@ The purpose of this function is to find this transformer as well as all the line
                     #...and grab the transformer name to retrieve the data from the DiTTo object
                     if (from_node, end_node) in self.edge_equipment_name:
                         transformer_names.append(self.edge_equipment_name[(from_node, end_node)])
-                        load_list[idx].upstream_transformer_name = self.edge_equipment_name[(from_node, end_node)]
+                        self.model[load_list[idx].name].upstream_transformer_name = self.edge_equipment_name[(from_node, end_node)]
                     elif (end_node, from_node) in self.edge_equipment_name:
                         transformer_names.append(self.edge_equipment_name[(end_node, from_node)])
-                        load_list[idx].upstream_transformer_name = self.edge_equipment_name[(end_node, from_node)]
+                        self.model[load_list[idx].name].upstream_transformer_name = self.edge_equipment_name[(end_node, from_node)]
                     #If we cannot find the object, raise an error because it sould not be the case...
                     else:
                         raise ValueError('Unable to find equipment between {_from} and {_to}'.format(_from=from_node, _to=end_node))
@@ -690,3 +770,104 @@ The purpose of this function is to find this transformer as well as all the line
                             wire.is_open=0
                     except:
                         pass
+
+
+    def set_switching_devices_ampacity(self):
+        '''
+            Loop over all switching devices without valid ampacity values.
+            Look at the neighboring lines and use their ampacity as value.
+        '''
+        #Loop over the ditto objects and find the switches, breakers, sectionalizers, fuses, and reclosers
+        for obj in self.model.models:
+            if isinstance(obj,Line):
+                if obj.is_switch ==1 or obj.is_breaker == 1 or obj.is_sectionalizer ==1 or obj.is_fuse == 1 or obj.is_recloser == 1:
+
+                    #Store the ampacities of the device's wires
+                    amps = np.array([wire.ampacity for wire in obj.wires])
+
+                    #and check if there are some nan values
+                    if np.any(np.isnan(amps)):
+
+                        #2 possibilities here:
+                        #case 1: Not all ampacity ratings are nans
+                        if not np.all(np.isnan(amps)):
+
+                            #This means that at least one of the device wires has a valid rating
+                            valid_amps = amps[np.logical_not(np.isnan(amps))]
+
+                            #Find it and use it for the other wires
+                            if len(valid_amps)==1:
+                                amps_value = valid_amps[0]
+                            else:
+                                amps_value = np.max(valid_amps) #we have different ratings accross wires. Heuristic: use the maximum.
+
+                            for wire in obj.wires:
+                                wire.ampacity = amps_value
+
+                        #Case 2: All ampacity ratings are nans
+                        else:
+                            #Here we look for a neighboring line object with a valid ampacity rating
+                            if obj.from_element is not None and obj.to_element is not None:
+
+                                should_continue = True
+                                from_node = obj.from_element
+                                to_node = obj.to_element
+
+                                while should_continue:
+                                    if self.G.graph.has_node(from_node) and self.G.graph.has_node(to_node):
+
+                                        #Get the neighbors on the from side
+                                        neighbors_from = [n for n in nx.neighbors(self.G.graph, from_node) if n != to_node]
+
+                                        #Get the neighbors on the to side
+                                        neighbors_to   = [n for n in nx.neighbors(self.G.graph, to_node) if n != from_node]
+
+                                        amps_value = None
+                                        if len(neighbors_from)>0:
+
+                                            #To avoid infinite loops where we always consider the same objects, select neighbors randomly
+                                            idx=random.randint(0,min(len(neighbors_from),len(neighbors_to))-1)
+
+                                            #we only have the from and to nodes. We need to find the name of the corresponding ditto object
+                                            if (neighbors_from[idx],obj.from_element) in self.edge_equipment_name:
+
+                                                try:
+                                                    #Try to get the object with its name
+                                                    neighboring_line_obj = self.model[self.edge_equipment_name[(neighbors_from[idx],from_node)]]
+
+                                                    #If we have a valid ampacity rating, then use this value and exit the loop
+                                                    if(neighboring_line_obj.wires[0].ampacity is not None and 
+                                                        not np.isnan(neighboring_line_obj.wires[0].ampacity)):
+                                                        amps_value = neighboring_line_obj.wires[0].ampacity
+                                                        should_continue = False
+
+                                                #If we failed for some reason, try on the to side
+                                                except:
+                                                    amps_value = None 
+
+                                        #If we still haven't found a value and we have sone neighbors on the to side
+                                        if amps_value is None and len(neighbors_to)>0:
+
+                                            #Try to find the name of the object
+                                            if (to_node,neighbors_to[idx]) in self.edge_equipment_name:
+
+                                                try:
+                                                    neighboring_line_obj = self.model[self.edge_equipment_name[(to_node,neighbors_to[idx])]]
+                                                    if neighboring_line_obj.wires[0].ampacity is not None and not np.isnan(neighboring_line_obj.wires[0].ampacity):
+                                                        amps_value = neighboring_line_obj.wires[0].ampacity
+                                                        should_continue = False
+                                                except:
+                                                    amps_value = None
+
+                                        #At this point, if we still haven't found a value, update the from and to node to 
+                                        #continue the search further away from the initial object
+                                        if should_continue:
+                                            to_node = neighbors_to[idx]
+                                            from_node = to_node
+
+                                    else:
+                                        raise ValueError('Missing nodes {n1} and/or {n2} in network'.format(n1=from_node, n2=to_node))
+
+                                if amps_value is not None:
+                                    for wire in obj.wires:
+                                        wire.ampacity = amps_value

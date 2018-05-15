@@ -4,113 +4,93 @@ from __future__ import absolute_import, division, print_function
 from builtins import super, range, zip, round, map
 import sys
 import logging
+from six import string_types
 
+LOGGER = logging.getLogger(__name__)
 
-class abstract_writer:
+class AbstractWriter(object):
     '''Abstract class for DiTTo writers.
+    author: Nicolas Gensollen. October 2017.
+    '''
 
-author: Nicolas Gensollen. October 2017.
-
-'''
+    register_names = []
 
     def __init__(self, **kwargs):
-        '''Abstract class CONSTRUCTOR.
-
-'''
-        if 'log_file' in kwargs:
-            log_file = kwargs['log_file']
-        else:
-            log_file = 'writer.log'
-
-        if 'output_path' in kwargs:
-            self.output_path = kwargs['output_path']
-        else:
-            self.output_path = './'
+        '''Abstract class CONSTRUCTOR.'''
 
         # create logger
-        self.logger = logging.getLogger('writer')
-        self.logger.setLevel(logging.INFO)
+        self.logger = LOGGER
 
-        # create file handler which logs everything
-        self.fh = logging.FileHandler(log_file)
-        self.fh.setLevel(logging.INFO)
+        self.output_path = kwargs.get("output_path", "./")
 
-        # create console handler with WARNING log level
-        self.ch = logging.StreamHandler()
-        self.ch.setLevel(logging.WARNING)
-
-        # create formatter and add it to the handlers
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        self.fh.setFormatter(formatter)
-        self.ch.setFormatter(formatter)
-
-        # add the handlers to the logger
-        self.logger.addHandler(self.fh)
-        self.logger.addHandler(self.ch)
+    @classmethod
+    def register(cls, registration_dict):
+        for name in cls.register_names:
+            registration_dict[name] = cls
 
     #@abstractmethod
     def write(self, model, **kwargs):
         '''Write abstract method.
 
-.. note:: To be implemented in subclasses.
+        .. note:: To be implemented in subclasses.
 
-'''
+        '''
         pass
 
     def convert_from_meters(self, quantity, unit, **kwargs):
         '''Converts a distance in meters to a distance in given unit.
 
-:param quantity: Distance in meter to convert
-:type quantity: float
-:param unit: The unit to convert to
-:type unit: str (see below the units supported)
-:param inverse: Use inverse ration (see below)
-:type inverse: bool
-:returns: The distance in the requested unit
-:rtype: float
+        :param quantity: Distance in meter to convert
+        :type quantity: float
+        :param unit: The unit to convert to
+        :type unit: str (see below the units supported)
+        :param inverse: Use inverse ration (see below)
+        :type inverse: bool
+        :returns: The distance in the requested unit
+        :rtype: float
 
-**Units supported:**
+        **Units supported:**
 
-The units supported are the OpenDSS available units:
+        The units supported are the OpenDSS available units:
 
-        - miles ('mi')
-        - kilometers ('km')
-        - kilofeet ('kft')
-        - meters ('m')
-        - feet ('ft')
-        - inches ('in')
-        - centimeters ('cm')
+                - miles ('mi')
+                - kilometers ('km')
+                - kilofeet ('kft')
+                - meters ('m')
+                - feet ('ft')
+                - inches ('in')
+                - centimeters ('cm')
 
 
-**Ratios:**
+        **Ratios:**
 
-The ratios used are the ones provided by Google. The following table summerize the multipliers to obtain the unit:
+        The ratios used are the ones provided by Google. The following table summerize the multipliers to obtain the unit:
 
-+--------+------------+
-|  Unit  | Multiplier |
-+========+============+
-|   mi   | 0.000621371|
-+--------+------------+
-|   km   |    0.001   |
-+--------+------------+
-|   kft  | 0.00328084 |
-+--------+------------+
-|    m   |     1      |
-+--------+------------+
-|   ft   |   3.28084  |
-+--------+------------+
-|   in   |   39.3701  |
-+--------+------------+
-|   cm   |     100    |
-+--------+------------+
+        +--------+------------+
+        |  Unit  | Multiplier |
+        +========+============+
+        |   mi   | 0.000621371|
+        +--------+------------+
+        |   km   |    0.001   |
+        +--------+------------+
+        |   kft  | 0.00328084 |
+        +--------+------------+
+        |    m   |     1      |
+        +--------+------------+
+        |   ft   |   3.28084  |
+        +--------+------------+
+        |   in   |   39.3701  |
+        +--------+------------+
+        |   cm   |     100    |
+        +--------+------------+
 
-.. note:: If the unit is not one of these, the function returns None
+        .. note:: If the unit is not one of these, the function returns None
 
-.. warning:: This function is a duplicate (also exists for the OpenDSS reader). Reproduce here for convenience.
+        .. warning:: This function is a duplicate (also exists for the OpenDSS reader). Reproduce here for convenience.
 
-.. seealso:: convert_to_meters, unit_conversion
+        .. seealso:: convert_to_meters, unit_conversion
 
-'''
+        '''
         if 'inverse' in kwargs and isinstance(kwargs['inverse'], bool):
             inverse = kwargs['inverse']
         else:
@@ -119,7 +99,7 @@ The ratios used are the ones provided by Google. The following table summerize t
         if unit is None:
             return None
 
-        if not isinstance(unit, str):
+        if not isinstance(unit, string_types):
             self.logger.warning('convert_from_meters() expects a unit in string format')
             return None
 

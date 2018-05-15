@@ -11,12 +11,14 @@ import json
 import numpy as np
 import logging
 import time
+from six import string_types
+from functools import reduce
 
 #OpenDSSdirect import
 import opendssdirect as dss
 
 #Ditto imports
-from ditto.readers.abstract_reader import abstract_reader
+from ditto.readers.abstract_reader import AbstractReader
 from ditto.store import Store
 from ditto.models.node import Node
 from ditto.models.line import Line
@@ -38,6 +40,7 @@ from ditto.models.feeder_metadata import Feeder_metadata
 
 from ditto.models.base import Unicode
 
+logger = logging.getLogger(__name__)
 
 def timeit(method):
     def timed(*args, **kw):
@@ -45,37 +48,37 @@ def timeit(method):
         result = method(*args, **kw)
         te = time.time()
 
-        print('%r (%r, %r) %2.2f sec' % \
+        logger.debug('%r (%r, %r) %2.2f sec' % \
               (method.__name__, args, kw, te-ts))
         return result
 
     return timed
 
 
-class reader(abstract_reader):
+class Reader(AbstractReader):
     '''OpenDSS--->DiTTo reader class.
-Use to read and parse an OpenDSS circuit model to DiTTo.
+    Use to read and parse an OpenDSS circuit model to DiTTo.
 
-:param log_file: Name/path of the log file. Optional. Default='./OpenDSS_reader.log'
-:type log_file: str
+    :param log_file: Name/path of the log file. Optional. Default='./OpenDSS_reader.log'
+    :type log_file: str
 
-**Constructor:**
+    **Constructor:**
 
->>> my_reader=Reader(log_file='./logs/my_log.log')
+    >>> my_reader=Reader(log_file='./logs/my_log.log')
 
-.. warning::
+    .. warning::
 
     The reader uses OpenDSSDirect heavily. <https://github.com/NREL/OpenDSSDirect.py>
-    For more information on this package contact Dheepak Krishnamurthy.
+    For more information on this package contact Dheepak Krishnamurthy.'''
 
-'''
+    register_names = ["dss", "opendss", "OpenDSS", "DSS"]
+
 
     def __init__(self, **kwargs):
-        '''Constructor for the OpenDSS reader.
+        '''Constructor for the OpenDSS reader.'''
 
-'''
         #Call super
-        abstract_reader.__init__(self, **kwargs)
+        super(Reader, self).__init__(**kwargs)
 
         self.DSS_file_names = {}
 
@@ -87,7 +90,13 @@ Use to read and parse an OpenDSS circuit model to DiTTo.
         if 'buscoordinates_file' in kwargs:
             self.DSS_file_names['Nodes'] = kwargs['buscoordinates_file']
         else:
-            self.DSS_file_names['Nodes'] = './buscoords.dss'
+            self.DSS_file_names['Nodes'] = './buscoord.dss'
+
+        #Get the delimiter
+        if 'coordinates_delimiter' in kwargs and isinstance(kwargs['coordinates_delimiter'], string_types):
+            self.coordinates_delimiter = kwargs['coordinates_delimiter']
+        else:
+            self.coordinates_delimiter = ','
 
         #self.DSS_file_names={'Nodes': 'buscoords.dss',
         #                     'master': 'master.dss'}
@@ -124,7 +133,7 @@ Log an error if the commanf cannot be runned.
 
 '''
         try:
-            return dss.dss_lib.DSSPut_Command(string.encode('ascii')).decode('ascii')
+            return dss.run_command(string)
         except:
             self.logger.error('Unable to execute the following command: \n' + string)
 
@@ -213,7 +222,7 @@ Responsible for calling the sub-parsers and logging progress.
             #self.logger.error('Trying to parse before building opendssdirect.')
             #return -1
         end = time.time()
-        print('Build OpenDSSdirect= {}'.format(end - start))
+        logger.debug('Build OpenDSSdirect= {}'.format(end - start))
 
         if 'feeder_file' in kwargs:
             self.feeder_file = kwargs['feeder_file']
@@ -226,7 +235,7 @@ Responsible for calling the sub-parsers and logging progress.
             self.parse_power_source(model) #TODO: push this to abstract reader once power source parsing is stable...
 
         #Call parse from abstract reader class
-        abstract_reader.parse(self, model, **kwargs)
+        super(Reader, self).parse(model, **kwargs)
 
         self.parse_storage(model)
 
@@ -373,45 +382,46 @@ Responsible for calling the sub-parsers and logging progress.
 '''
         #Get the coordinate file
         self.bus_coord_file = self.DSS_file_names['Nodes']
+        skip_coordinate_parsing=False
 
-        #Get the delimiter
-        if 'coordinates_delimiter' in kwargs and isinstance(kwargs['coordinates_delimiter'], str):
-            self.coordinates_delimiter = kwargs['coordinates_delimiter']
-        else:
-            self.coordinates_delimiter = ','
-
-        with open(self.bus_coord_file, 'r') as g:
-            coordinates = g.readlines()
+        try:
+            with open(self.bus_coord_file, 'r') as g:
+                coordinates = g.readlines()
+        except IOError:
+            skip_coordinate_parsing=True
 
         buses = {}
-        for line in coordinates:
+        if not skip_coordinate_parsing:
+            for line in coordinates:
+                if line.strip() == "":
+                    continue
 
-            try:
-                name, X, Y = list(map(lambda x: x.strip(), line.split(self.coordinates_delimiter)))
-                name = name.lower()
-            except:
-                self.logger.warning('Could not parse line : ' + str(line))
-                name = None
-                X = None
-                Y = None
-                pass
+                try:
+                    name, X, Y = list(map(lambda x: x.strip(), line.split(self.coordinates_delimiter)))
+                    name = name.lower()
+                except:
+                    self.logger.warning('Could not parse line : ' + str(line))
+                    name = None
+                    X = None
+                    Y = None
+                    pass
 
-            try:
-                X = float(X)
-                Y = float(Y)
-            except:
-                self.logger.warning('Could not cast coordinates {X}, {Y} for bus {name}'.format(X=X, Y=Y, name=name))
-                pass
+                try:
+                    X = float(X)
+                    Y = float(Y)
+                except:
+                    self.logger.warning('Could not cast coordinates {X}, {Y} for bus {name}'.format(X=X, Y=Y, name=name))
+                    pass
 
-            if not name in buses:
-                buses[name] = {}
-                buses[name]['positions'] = [X, Y]
-                if name not in self.all_object_names:
-                    self.all_object_names.append(name)
+                if not name in buses:
+                    buses[name] = {}
+                    buses[name]['positions'] = [X, Y]
+                    if name not in self.all_object_names:
+                        self.all_object_names.append(name)
+                    else:
+                        self.logger.warning('Duplicate object Node {name}'.format(name=name))
                 else:
-                    self.logger.warning('Duplicate object Node {name}'.format(name=name))
-            else:
-                buses[name]['positions'] = [X, Y]
+                    buses[name]['positions'] = [X, Y]
 
         #Extract the line data
         lines = dss.utils.class_to_dataframe('line')
@@ -561,7 +571,7 @@ Responsible for calling the sub-parsers and logging progress.
         lines = dss.utils.class_to_dataframe('Line')
 
         middle = time.time()
-        print('Line class to dataframe= {}'.format(middle - start))
+        logger.debug('Line class to dataframe= {}'.format(middle - start))
 
         N_lines = len(lines)
         self._lines = []
@@ -587,6 +597,8 @@ Responsible for calling the sub-parsers and logging progress.
                 linecode = data['linecode']
             except:
                 linecode = None
+
+            api_line.nameclass = linecode
 
             #Based on naming convention.
             #TODO: Find a cleaner way to get this information
@@ -665,13 +677,18 @@ Responsible for calling the sub-parsers and logging progress.
             #is_fuse
             if line_name.replace('(','').replace(')','') in fuses_names:
                 api_line.is_fuse = 1
+                api_line.nameclass = line_name.split('(')[0]
             #is_recloser
             elif line_name in reclosers_names or 'recloser' in line_name:
                 api_line.is_recloser = 1
+                api_line.nameclass = line_name.split('(')[0]
             elif 'breaker' in line_name:
                 api_line.is_breaker = 1
+                api_line.nameclass = line_name.split('(')[0]
             elif 'Switch' in data and data['Switch']:
                 api_line.is_switch = 1
+                api_line.nameclass = line_name.split('(')[0]
+
 
             #faultrate
             if 'faultrate' in data:
@@ -800,6 +817,17 @@ Responsible for calling the sub-parsers and logging progress.
 
                 wires.append(Wire(model))
 
+                #Initialize the wire nameclass with the linecode name
+                #This is just a best effort to get some information
+                #when no wiredata is provided...
+                try:
+                    wires[p].nameclass=reduce(lambda x,y:x+'-'+y, linecode.split('_')[2:]) #RNM uses linecodes like "1P_OH_Pigeon_ACSR3/0"
+                except:
+                    try:
+                        wires[p].nameclass=api_line.nameclass
+                    except:
+                        pass
+
                 if name in fuses_names:
                     wires[p].is_fuse = 1
                 else:
@@ -833,12 +861,24 @@ Responsible for calling the sub-parsers and logging progress.
                         wires[p].phase = 'N'
                     pass
 
+                #normamps
+                try:
+                    wires[p].ampacity=float(data['normamps'])
+                except:
+                    pass
+
+                #emergamps
+                try:
+                    wires[p].emergency_ampacity=float(data['emergamps'])
+                except:
+                    pass
+
                 #If we have linegeometry data, we can do something
                 if this_line_geometry is not None:
 
                     #nameclass
                     try:
-                        wires[p].nameclass = this_line_geometry['cncable']
+                        wires[p].nameclass = this_line_geometry['wire']
                     except:
                         pass
 
@@ -1013,19 +1053,19 @@ Responsible for calling the sub-parsers and logging progress.
             self._lines.append(api_line)
 
         end = time.time()
-        print('rest= {}'.format(end - middle))
+        logger.debug('rest= {}'.format(end - middle))
         return 1
 
     @timeit
     def parse_transformers(self, model):
         '''Transformer parser.
 
-:param model: DiTTo model
-:type model: DiTTo model
-:returns: 1 for success, -1 for failure
-:rtype: int
+        :param model: DiTTo model
+        :type model: DiTTo model
+        :returns: 1 for success, -1 for failure
+        :rtype: int
+        '''
 
-'''
         transformers = dss.utils.class_to_dataframe('transformer')
         self._transformers = []
 
@@ -1263,7 +1303,7 @@ Responsible for calling the sub-parsers and logging progress.
 
             #Name
             try:
-                reg_name = name.split('.')[1].lower()
+                reg_name = 'regulator_'+name.split('.')[1].lower()
                 if reg_name not in self.all_object_names:
                     self.all_object_names.append(reg_name)
                 else:
@@ -1874,7 +1914,7 @@ Responsible for calling the sub-parsers and logging progress.
 
             #Name
             try:
-                api_storage.name=name 
+                api_storage.name=name
             except:
                 pass
 

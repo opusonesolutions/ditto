@@ -3,11 +3,14 @@
 from __future__ import absolute_import, division, print_function
 from builtins import super, range, zip, round, map
 
+import logging
 import random
-import networkx as nx
 import traceback
+
+import networkx as nx
 from ditto.models.base import DiTToHasTraits
 
+logging.getLogger(__name__)
 
 class Network:
     def __init__(self):
@@ -16,6 +19,19 @@ class Network:
         self.class_map = {} # Map the networkx names to the object type (not included in attributes)
         self.is_built = False #Flag that indicates whether the Network has been built or not.
         self.attributes_set = False #Flag that indicates whether the attributes have been set or not.
+
+    def provide_graphs(self,graph,digraph):
+        '''
+            This functions sets the graph and digraph of the Network class with direct user inputs.
+            This can be useful if the user has the graphs stored and does not want to re-compute them.
+            It can also be useful when work has to be done to get connected networks. It might be easier to
+            perform the work beforehand, and create a Network instance for each connected component.
+
+            .. warning: The method does not do any safety check yet...
+        '''
+        self.graph=graph
+        self.digraph=digraph
+        self.is_built=True
 
     # Only builds connected nodes
     #
@@ -141,15 +157,42 @@ class Network:
                     if (i.connecting_element, i.name) in graph_edges:
                         for attr in tuple(set(dir(i)) - set(dir(DiTToHasTraits))): #only set attributes from the subclass, not the base class
                             if attr[0] != '_':
-                                self.graph[i.connecting_element][i.name][attr] = getattr(i, attr)
-                                self.digraph[i.connecting_element][i.name][attr] = getattr(i, attr)
+                                if self.graph.has_edge(i.connecting_element,i.name):
+                                    self.graph[i.connecting_element][i.name][attr] = getattr(i, attr)
+                                else:
+                                    self.graph.add_edge(i.connecting_element,i.name,length=0)
+                                    self.graph[i.connecting_element][i.name][attr] = getattr(i, attr)
+                                if self.digraph.has_edge(i.connecting_element,i.name):
+                                    self.digraph[i.connecting_element][i.name][attr] = getattr(i, attr)
+                                else:
+                                    self.digraph.add_edge(i.connecting_element,i.name,length=0)
+                                    self.digraph[i.connecting_element][i.name][attr] = getattr(i, attr)
 
         self.attributes_set = True
+
+
+    def remove_open_switches(self, model):
+        for m in model.models:
+            if hasattr(m,'is_switch') and m.is_switch is not None and hasattr(m,'from_element') and hasattr(m,'to_element') and m.from_element is not None and m.to_element is not None and len(m.wires)>0:
+                is_open = True
+                for w in m.wires:
+                    if hasattr(w,'is_open') and w.is_open is not None and not w.is_open:
+                        is_open = False
+
+                if is_open:
+                    self.graph.remove_edge(m.from_element,m.to_element)
+                    if self.digraph.has_edge(m.from_element,m.to_element):
+                        self.digraph.remove_edge(m.from_element,m.to_element)
+                    if self.digraph.has_edge(m.to_element,m.from_element):
+                        self.digraph.remove_edge(m.to_element,m.from_element)
+
+
+         
 
     def get_upstream_transformer(self, model, node):
 
         curr_node = node
-        curr = self.digraph.predecessors(node)
+        curr = list(self.digraph.predecessors(node))
         edge_equipment = nx.get_edge_attributes(self.digraph, 'equipment')
         edge_equipment_name = nx.get_edge_attributes(self.digraph, 'equipment_name')
         #import pdb; pdb.set_trace()
@@ -158,7 +201,7 @@ class Network:
             if edge_type == 'PowerTransformer':
                 return edge_equipment_name[(curr[0], curr_node)]
             curr_node = curr[0] # assuming that the network is a DAG
-            curr = self.digraph.predecessors(curr_node)
+            curr = list(self.digraph.predecessors(curr_node))
         return None
 
     def get_all_elements_downstream(self, model, source):
@@ -172,15 +215,15 @@ This might be handy when trying to find all the objects below a substation such 
         #Checking that the network is already built
         #TODO: Log instead of printing...
         if not self.is_built:
-            print('Warning. Trying to use Network model without building the network.')
-            print('Calling build() with source={}'.format(source))
+            logger.debug('Warning. Trying to use Network model without building the network.')
+            logger.debug('Calling build() with source={}'.format(source))
             self.build(model, source=source)
 
         #Checking that the attributes have been set
         #TODO: Log instead of printing...
         if not self.attributes_set:
-            print('Warning. Trying to use Network model without setting the attributes first.')
-            print('Setting the attributes...')
+            logger.debug('Warning. Trying to use Network model without setting the attributes first.')
+            logger.debug('Setting the attributes...')
             self.set_attributes(model)
 
         #Run the dfs or die trying...
@@ -225,16 +268,16 @@ This might be handy when trying to find all the objects below a substation such 
         for i in self.graph.nodes():
             try:
                 sp = nx.shortest_path(self.graph, 'sourcebus', i)
-                print(i, sp)
+                logger.debug(i, sp)
             except:
-                print('No path to ' + i)
+                logger.debug('No path to ' + i)
 
     def print_edges(self):
         for i in self.graph.edges():
-            print(i)
+            logger.debug(i)
 
     def print_attrs(self):
-        print(self.graph.nodes(data=True))
+        logger.debug(self.graph.nodes(data=True))
 
     def bfs_order(self, source='sourcebus'):
         start_node = self.graph[source]
@@ -289,8 +332,8 @@ This might be handy when trying to find all the objects below a substation such 
         pos_max_cnt = -1
         min_phase = 1000
         for i in range(len(nodes)):
-            #print('phaselen:')
-            #print(len(self.graph.node[nodes[i]]['phases']))
+            #logger.debug('phaselen:')
+            #logger.debug(len(self.graph.node[nodes[i]]['phases']))
             if (not 'phases' in self.graph.node[nodes[i]]) or self.graph.node[nodes[i]]['phases'] == None:
                 pos = rand.randint(0, len(nodes) - 2)
                 order1 = tuple([nodes[pos], nodes[pos + 1]])
@@ -301,7 +344,7 @@ This might be handy when trying to find all the objects below a substation such 
                     return (self.graph[order2[0]][order2[1]]['name'])
             if len(self.graph.node[nodes[i]]['phases']) < min_phase:
                 min_phase = len(self.graph.node[nodes[i]]['phases'])
-        #print(min_phase)
+        #logger.debug(min_phase)
         for i in range(len(nodes)):
             node = nodes[i]
             if at_1p_section and len(self.graph.node[node]['phases']) > min_phase:
@@ -321,10 +364,10 @@ This might be handy when trying to find all the objects below a substation such 
             order1 = tuple([nodes[pos_max_cnt - max_cnt / 2], nodes[pos_max_cnt - max_cnt / 2 + 1]])
             order2 = tuple([nodes[pos_max_cnt - max_cnt / 2 + 1], nodes[pos_max_cnt - max_cnt / 2]])
             if order1 in self.graph.edges():
-                print(order1)
+                logger.debug(order1)
                 return (self.graph[order1[0]][order1[1]]['name'])
             else:
-                print(order2)
+                logger.debug(order2)
                 return (self.graph[order2[0]][order2[1]]['name'])
         else:
             return ()

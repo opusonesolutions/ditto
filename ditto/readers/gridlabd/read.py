@@ -4,6 +4,7 @@ from builtins import super, range, zip, round, map
 from datetime import datetime
 from datetime import timedelta
 from croniter import croniter
+import logging
 import numpy as np
 import math
 import sys
@@ -32,8 +33,13 @@ from ditto.formats.gridlabd import gridlabd
 from ditto.formats.gridlabd import base
 from ditto.models.base import Unicode
 
+from ..abstract_reader import AbstractReader
 
-class reader:
+logger = logging.getLogger(__name__)
+
+class Reader(AbstractReader):
+
+    register_names = ["glm", "gridlabd"]
 
     all_gld_objects = {}
     all_api_objects = {}
@@ -45,10 +51,9 @@ class reader:
     def __init__(self, **kwargs):
         '''Gridlabd class CONSTRCTOR.'''
 
-        if "input_file" in kwargs:
-            self.input_file = kwargs['input_file']
-        else:
-            self.input_file = './input.glm'
+        self.input_file = kwargs.get("input_file", "./input.glm")
+        super(Reader, self).__init__(**kwargs)
+
 
     def compute_spacing(self, spacing, conductors, default_height=30):
         lookup = ['A', 'B', 'C', 'N', 'E']
@@ -86,7 +91,7 @@ class reader:
             n_entries = n_entries - 1
 
         if n_entries <= 0:
-            print("Warning: No elements included in spacing")
+            logger.debug("Warning: No elements included in spacing")
 
         if n_entries == 1:
             for w in conductors:
@@ -134,10 +139,12 @@ class reader:
                     dist_a = distances[index][max_from]
                     dist_b = distances[index][max_to]
                     heron_p = (dist_a + dist_b + max_dist) / 2.0
-                    x = 2 * math.sqrt(heron_p * (heron_p - dist_a) * (heron_p - dist_b) *
-                                      (heron_p - max_dist)) / max_dist # May be +-x as it could be on either side of the max_dist edge
-                    y = -1 * math.sqrt(dist_a**2 - x**2)
-                    tmp_map[w.phase] = [(x, y), (-1 * x, y)]
+                    try:
+                        x = 2 * math.sqrt(heron_p * (heron_p - dist_a) * (heron_p - dist_b) *(heron_p - max_dist)) / max_dist # May be +-x as it could be on either side of the max_dist edge
+                        y = -1 * math.sqrt(dist_a**2 - x**2)
+                        tmp_map[w.phase] = [(x, y), (-1 * x, y)]
+                    except:
+                        raise ValueError("Line Geometry infeasible with distances %f %f %f"%(dist_a,dist_b,max_dist))
 
             for w in conductors:
                 final = []
@@ -240,13 +247,13 @@ class reader:
                             0.00202237 * freq * (math.log(1 / wire_list[i].gmr) + 7.6786 + 0.5 * math.log(resistivity / freq))
                         )
                     else:
-                        print('Warning: resistance or GMR is missing from wire')
+                        logger.debug('Warning: resistance or GMR is missing from wire')
 
                     if wire_list[i].phase is not None:
                         index = wire_map[wire_list[i].phase]
                         matrix[index][index] = z / 1609.34
                     else:
-                        print('Warning: phase missing from wire')
+                        logger.debug('Warning: phase missing from wire')
 
                 else:
                     z = 0
@@ -261,7 +268,7 @@ class reader:
 
                     else:
                         #import pdb; pdb.set_trace()
-                        print('Warning phase missing from wire, or Insulation_thickness/diameter not set')
+                        logger.debug('Warning phase missing from wire, or Insulation_thickness/diameter not set')
 
         if kron_reduce:
             kron_matrix = [[0 for i in range(2)] for j in range(2)]
@@ -288,13 +295,13 @@ class reader:
                             0.00202237 * freq * (math.log(1 / wire_list[i].gmr) + 7.6786 + 0.5 * math.log(resistivity / freq))
                         )
                     else:
-                        print('Warning: resistance or GMR is missing from wire')
+                        logger.debug('Warning: resistance or GMR is missing from wire')
 
                     if wire_list[i].phase is not None:
                         index = wire_map[wire_list[i].phase]
                         matrix[index][index] = z
                     else:
-                        print('Warning: phase missing from wire')
+                        logger.debug('Warning: phase missing from wire')
 
                 else:
                     z = 0
@@ -306,14 +313,14 @@ class reader:
                         distance = math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
                         z = complex(0.00158836 * freq, 0.00202237 * freq * (math.log(1 / distance) + 7.6786 + 0.5 * math.log(resistivity / freq)))
                     else:
-                        print('Warning X or Y values missing from wire')
+                        logger.debug('Warning X or Y values missing from wire')
                         #import pdb; pdb.set_trace()
                     if wire_list[i].phase is not None and wire_list[j].phase is not None:
                         index1 = wire_map[wire_list[i].phase]
                         index2 = wire_map[wire_list[j].phase]
                         matrix[index1][index2] = z # ohms per meter
                     else:
-                        print('Warning: phase missing from wire')
+                        logger.debug('Warning: phase missing from wire')
 
         if kron_reduce and has_neutral:
             kron_matrix = [[0 for i in range(3)] for j in range(3)]
@@ -409,7 +416,7 @@ class reader:
                                         self.all_gld_objects[curr_object['name']] = curr_object
 
                                     else:
-                                        print("Warning object missing a name")
+                                        logger.debug("Warning object missing a name")
                                     curr_object = None
                 if curr_schedule != None:
                     row = row.strip(';')
@@ -431,7 +438,7 @@ class reader:
                             curr_schedule = None
                             found_schedule = False
 
-        print(all_schedules)
+        logger.debug(all_schedules)
         for obj_name, obj in self.all_gld_objects.items():
             obj_type = type(obj).__name__
 
@@ -661,7 +668,8 @@ class reader:
                                     pass
 
                             if len(reactances) > 0:
-                                api_transformer.reactances = reactances
+                                for x in reactances:
+                                    api_transformer.reactances.append(x)
 
                             try:
                                 power_rating = float(config['power_rating']) * 1000
@@ -1075,6 +1083,22 @@ class reader:
                 except AttributeError:
                     pass
 
+                try:
+                    if len(wires) == 0:
+                        for p in obj['phases'].strip('"'):
+                            if p == 'N':
+                                continue
+                            api_wire = Wire(model)
+                            api_wire.phase = p
+                            wires.append(api_wire)
+                            if obj['status'] == 'OPEN':
+                                wires[-1].is_open = True
+                            else:
+                                wires[-1].is_open = False
+                except AttributeError:
+                    pass
+
+
                 api_line.wires = wires
 
             if obj_type == 'switch':
@@ -1259,13 +1283,13 @@ class reader:
                     pass
 
                 if not impedance_matrix_direct:
-                    impedance_matrix = self.compute_matrix(conductors.keys())
+                    impedance_matrix = self.compute_matrix(list(conductors.keys()))
                     for i in range(len(impedance_matrix)):
                         for j in range(len(impedance_matrix[0])):
                             impedance_matrix[i][j] = impedance_matrix[i][j] / 1609.34
 
                 api_line.impedance_matrix = impedance_matrix
-                api_line.wires = conductors.keys()
+                api_line.wires = list(conductors.keys())
                 for api_wire in conductors:
                     try:
                         if api_wire.diameter is not None:
@@ -1376,10 +1400,11 @@ class reader:
                     pass
 
                 if not impedance_matrix_direct:
-                    impedance_matrix = self.compute_secondary_matrix(conductors.keys())
+                    impedance_matrix = self.compute_secondary_matrix(list(conductors.keys()))
 
                 api_line.impedance_matrix = impedance_matrix
-                api_line.wires = conductors.keys()
+                for wire in conductors.keys():
+                    api_line.wires.append(wire)
 
             if obj_type == 'underground_line':
 
@@ -1538,7 +1563,7 @@ class reader:
                                 for j in range(i + 1, n_entries):
                                     if distances[i][j] != -1:
                                         heron_area = heron_area * (heron_s - distances[i][j])
-                            print(heron_area)
+                            logger.debug(heron_area)
                             heron_area = math.sqrt(heron_area)
                             height = heron_area * 2 / (max * 1.0)
                             for w in conductors:
@@ -1618,13 +1643,14 @@ class reader:
                     pass
 
                 if not impedance_matrix_direct:
-                    impedance_matrix = self.compute_matrix(conductors.keys())
+                    impedance_matrix = self.compute_matrix(list(conductors.keys()))
                     for i in range(len(impedance_matrix)):
                         for j in range(len(impedance_matrix[0])):
                             impedance_matrix[i][j] = impedance_matrix[i][j] / 1609.34
 
                 api_line.impedance_matrix = impedance_matrix
-                api_line.wires = conductors.keys()
+                for wire in conductors.keys():
+                    api_line.wires.append(wire)
                 for api_wire in conductors:
                     try:
                         if api_wire.gmr is not None:

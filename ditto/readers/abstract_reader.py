@@ -6,20 +6,30 @@ from builtins import super, range, zip, round, map
 import sys
 import logging
 import numpy as np
+import cmath
+from six import string_types
 
 LOGGER = logging.getLogger(__name__)
 
 
-class abstract_reader:
+class AbstractReader(object):
     '''Abstract class for DiTTo readers.
     author: Nicolas Gensollen. October 2017.
     '''
+
+    register_names = []
 
     def __init__(self, **kwargs):
         '''Abstract class CONSTRUCTOR.'''
 
         # create logger
         self.logger = LOGGER
+
+    @classmethod
+    def register(cls, registration_dict):
+
+        for name in cls.register_names:
+            registration_dict[name] = cls
 
     def symmetrize(self, matrix):
         '''Symmetrize a triangular matrix in list format.
@@ -125,7 +135,7 @@ class abstract_reader:
         if unit is None:
             return None
 
-        if not isinstance(unit, str):
+        if not isinstance(unit, string_types):
             self.logger.warning('convert_to_meters() expects a unit in string format')
             return None
 
@@ -233,7 +243,7 @@ class abstract_reader:
         if unit is None:
             return None
 
-        if not isinstance(unit, str):
+        if not isinstance(unit, string_types):
             self.logger.warning('convert_from_meters() expects a unit in string format')
             return None
 
@@ -371,9 +381,18 @@ class abstract_reader:
     def get_sequence_impedance_matrix(self, phase_impedance_matrix):
         '''Get sequence impedance matrix from phase impedance matrix.'''
 
-        a = cmath.exp(complex(0, 2. / 3 * cmath.pi))
-        A = np.array([[complex(1.0, 0), complex(1.0, 0), complex(1.0, 0)], [complex(1.0, 0), a**2, a], [complex(1.0, 0), a, a**2]])
-        A_inv = 1. / 3.0 * np.array([[complex(1.0, 0), complex(1.0, 0), complex(1.0, 0)], [complex(1.0, 0), a, a**2], [complex(1.0, 0), a**2, a]])
+        phase_impedance_matrix = np.array(phase_impedance_matrix)
+        #If we have a 3 by 3 phase impedance matrix
+        if phase_impedance_matrix.shape==(3,3):
+            a = cmath.exp(complex(0, 2. / 3 * cmath.pi))
+            A = np.array([[complex(1.0, 0), complex(1.0, 0), complex(1.0, 0)], [complex(1.0, 0), a**2, a], [complex(1.0, 0), a, a**2]])
+            A_inv = 1. / 3.0 * np.array([[complex(1.0, 0), complex(1.0, 0), complex(1.0, 0)], [complex(1.0, 0), a, a**2], [complex(1.0, 0), a**2, a]])
+        #if we have a 2 by 2 phase impedance matrix
+        elif phase_impedance_matrix.shape==(2,2):
+            A = np.array([[1.0,1.0],[1.0,-1.0]])
+            A_inv = np.array([[.5,.5],[.5,-.5]])
+        else:
+            return []
         return np.dot(A_inv, np.dot(phase_impedance_matrix, A))
 
     def kron_reduction(self, primitive_impedance_matrix):
@@ -445,42 +464,49 @@ class abstract_reader:
             self.verbose = False
 
         #Parse the nodes
-        if self.verbose: print('Parsing the nodes...')
-        self.logger.info('Parsing the nodes...')
+        if self.verbose:
+            self.logger.info('Parsing the nodes...')
         s = self.parse_nodes(model)
-        if self.verbose and s != -1: print('Succesful!')
+        if self.verbose and s != -1:
+            self.logger.info('Succesful!')
 
         #Parse the lines
-        if self.verbose: print('Parsing the lines...')
-        self.logger.info('Parsing the lines...')
+        if self.verbose:
+            self.logger.info('Parsing the lines...')
         s = self.parse_lines(model)
-        if self.verbose and s != -1: print('Succesful!')
+        if self.verbose and s != -1:
+            self.logger.info('Succesful!')
 
         #Parse the transformers
-        if self.verbose: print('Parsing the transformers...')
-        self.logger.info('Parsing the transformers...')
+        if self.verbose:
+            self.logger.info('Parsing the transformers...')
         s = self.parse_transformers(model)
-        if self.verbose and s != -1: print('Succesful!')
+        if self.verbose and s != -1:
+            self.logger.info('Succesful!')
 
         #Parse Loads
-        if self.verbose: print('Parsing the loads...')
-        self.logger.info('Parsing the loads...')
+        if self.verbose:
+            self.logger.info('Parsing the loads...')
         s = self.parse_loads(model)
-        if self.verbose and s != -1: print('Succesful!')
+        if self.verbose and s != -1:
+            self.logger.info('Succesful!')
 
         #Parse regulators
-        if self.verbose: print('Parsing the regulators...')
-        self.logger.info('Parsing the regulators...')
+        if self.verbose:
+            self.logger.info('Parsing the regulators...')
         s = self.parse_regulators(model)
-        if self.verbose and s != -1: print('Succesful!')
+        if self.verbose and s != -1:
+            self.logger.info('Succesful!')
 
         #Parse capacitors
-        if self.verbose: print('Parsing the capacitors...')
-        self.logger.info('Parsing the capacitors...')
+        if self.verbose:
+            self.logger.info('Parsing the capacitors...')
         s = self.parse_capacitors(model)
-        if self.verbose and s != -1: print('Succesful!')
+        if self.verbose and s != -1:
+            self.logger.info('Succesful!')
 
-        if self.verbose: print('Parsing done.')
+        if self.verbose:
+            self.logger.info('Parsing done.')
 
         return 1
 
