@@ -46,15 +46,16 @@ def test_gridlabd_to_ephasor(output_folder=None,input_file_loc=None):
         r = Reader(input_file=input_file_loc)
         r.parse(m)
         m.set_names()
-        print('>Gridlab-D model {model} read...'.format(model=model))
+        print('>Gridlab-D model {model} read...'.format(model=input_file_loc))
         if output_folder is None:
             t = tempfile.TemporaryDirectory()
             w = Writer(output_path=t.name)
             w.write(m)
         else:
-            w = Writer(output_path=output_folder,output_name=model)
+            w = Writer(output_path=output_folder,output_name='output')
             w.write(m)
         print('>...and written to Ephasor.\n')
 
 if __name__ == '__main__':
     test_gridlabd_to_ephasor(output_folder = os.path.join(current_directory,'results','gridlabd_to_ephasor'))
+#test_gridlabd_to_ephasor(output_folder = os.path.join(current_directory,'results','rtca'),input_file_loc=os.path.join(current_directory,'data','big_cases','gridlabd','rtca','model_raw.glm'))
