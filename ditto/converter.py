@@ -33,10 +33,13 @@ class Converter(object):
     Author: Nicolas Gensollen. October 2017
     '''
 
-    def __init__(self, registered_reader_class, registered_writer_class, input_path, output_path, verbose=True):
+    def __init__(self, registered_reader_class, registered_writer_class, input_path, output_path, verbose=True, **kwargs):
         '''Converter class CONSTRUCTOR.'''
 
         self.reader_class = registered_reader_class
+
+        if registered_writer_class is None:
+            logger.warning('Writer class is set to None')
 
         self.writer_class = registered_writer_class
 
@@ -52,7 +55,18 @@ class Converter(object):
 
         # TODO: check if this is in the registered list
         self._from = registered_reader_class.format_name
-        self._to = registered_writer_class.format_name
+        if registered_writer_class is not None:
+            self._to = registered_writer_class.format_name
+        else:
+            self._to = None
+
+        #Serialize the DiTTo model before writing it out.
+        if "json_path" in kwargs and "registered_json_writer_class" in kwargs:
+            self.jsonize = True
+            self.json_path = kwargs['json_path']
+            self.json_writer_class = kwargs['registered_json_writer_class']
+        else:
+            self.jsonize = False
 
         self.verbose = verbose
 
@@ -115,7 +129,8 @@ class Converter(object):
     def build_path(self, path):
         '''Take a path as input and check that all folders exists as in the path.
         If folders are missing, they are created.
-        .. warning:: Expects a path in the form './folder1/folder2/folder3/'''
+        .. warning:: Expects a path in the form './folder1/folder2/folder3/
+        '''
         # First we need to get all the directories in the given path
         dirs=path.split('/')
 
@@ -149,8 +164,11 @@ class Converter(object):
     def configure_writer(self, outputs):
         '''Configure the writer.'''
 
-        logger.debug("Using Writer {} with outputs {}".format(self.writer_class, outputs))
-        self.writer=self.writer_class(**outputs)
+        if self.writer_class is not None:
+            logger.debug("Using Writer {} with outputs {}".format(self.writer_class, outputs))
+            self.writer=self.writer_class(**outputs)
+        else:
+            logger.error("Cannot configure the writer because Writer class is None.")
 
     def convert(self):
         '''Run the conversion: from_format--->DiTTo--->to_format on all the feeders in feeder_list.'''
@@ -168,6 +186,10 @@ class Converter(object):
         self.configure_writer(output)
 
         self.reader.parse(self.m)
+
+        if self.jsonize:
+            self.json_writer = self.json_writer_class(output_path=self.json_path)
+            self.json_writer.write(self.m)
 
         self.writer.write(self.m, verbose=self.verbose)
 

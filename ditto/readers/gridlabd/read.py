@@ -38,18 +38,17 @@ from ..abstract_reader import AbstractReader
 logger = logging.getLogger(__name__)
 
 class Reader(AbstractReader):
-
+    """
+    The schema is read in gridlabd.py which is imported as a module here.
+    The class objects are stored in the global space of the gridlabd module
+    """
     register_names = ["glm", "gridlabd"]
 
     all_gld_objects = {}
     all_api_objects = {}
-    """
-        The schema is read in gridlabd.py which is imported as a module here.
-        The class objects are stored in the global space of the gridlabd module
-    """
 
     def __init__(self, **kwargs):
-        '''Gridlabd class CONSTRCTOR.'''
+        '''Gridlabd class CONSTRUCTOR.'''
 
         self.input_file = kwargs.get("input_file", "./input.glm")
         super(Reader, self).__init__(**kwargs)
@@ -1082,6 +1081,22 @@ class Reader(AbstractReader):
                     wires.append(api_wire)
                 except AttributeError:
                     pass
+
+                try:
+                    if len(wires) == 0:
+                        for p in obj['phases'].strip('"'):
+                            if p == 'N':
+                                continue
+                            api_wire = Wire(model)
+                            api_wire.phase = p
+                            wires.append(api_wire)
+                            if obj['status'] == 'OPEN':
+                                wires[-1].is_open = True
+                            else:
+                                wires[-1].is_open = False
+                except AttributeError:
+                    pass
+
 
                 api_line.wires = wires
 
