@@ -225,33 +225,37 @@ class Writer(AbstractWriter):
         source_string_list = []
         overhead_string_list = []
         overhead_byphase_string_list = []
-        underground_string_list = []
-        switch_string_list = []
-        fuse_string_list = []
-        recloser_string_list = []
-        breaker_string_list = []
-        capacitor_string_list = []
-        two_windings_transformer_string_list = []
-        three_windings_transformer_string_list = []
-        regulator_string_list = []
+        underground_string_list=[]
+        switch_string_list=[]
+        fuse_string_list=[]
+        recloser_string_list=[]
+        breaker_string_list=[]
+        capacitor_string_list=[]
+        two_windings_transformer_string_list=[]
+        three_windings_transformer_string_list=[]
+        regulator_string_list=[]
+        converter_string_list=[]
+        converter_control_string_list=[]
+        pv_setting_string_list=[]
+        long_term_dynamics_string_list=[]
 
-        # The linecodes dictionary is used to group lines which have the same properties
-        # (impedance matrix, ampacity...)
-        # This dictionary will be outputed in write_equipment_file
-        ID = 0
-        self.linecodes_overhead = {}
-        ID_cable = 0
-        self.cablecodes = {}
-        ID_cap = 0
-        self.capcodes = {}
-        ID_trans = 0
-        self.two_windings_trans_codes = {}
-        ID_reg = 0
-        self.reg_codes = {}
-        ID_trans_3w = 0
-        self.three_windings_trans_codes = {}
-        ID_cond = 0
-        self.conductors = {}
+        #The linecodes dictionary is used to group lines which have the same properties
+        #(impedance matrix, ampacity...)
+        #This dictionary will be outputed in write_equipment_file
+        ID=0
+        self.linecodes_overhead={}
+        ID_cable=0
+        self.cablecodes={}
+        ID_cap=0
+        self.capcodes={}
+        ID_trans=0
+        self.two_windings_trans_codes={}
+        ID_reg=0
+        self.reg_codes={}
+        ID_trans_3w=0
+        self.three_windings_trans_codes={}
+        ID_cond=0
+        self.conductors={}
         self.switchcodes = {}
         self.fusecodes = {}
         self.reclosercodes = {}
@@ -2857,7 +2861,123 @@ class Writer(AbstractWriter):
                                     new_transformer_line
                                 )
 
-            # Write everything to the network file
+                if (isinstance(i, Photovoltaic)):
+                    new_converter_string = ''
+                    new_converter_control_setting_string = ''
+                    new_pv_setting_string = ''
+                    new_long_term_dynamics = ''
+                    if hasattr(i,'name') and i.name is not None and hasattr(i,'connecting_element') and i.connecting_element is not None:
+                        if i.connecting_element in model.model_names or 'load_'+i.connecting_element in model.model_names:
+                        new_section_ID='{f}_{t}'.format(f=i.connecting_element,t=i.name)
+                        new_section='{f}_{t},{f},{t},'.format(f=i.connecting_element,t=i.name)
+                        if hasattr(i, 'feeder_name') and i.feeder_name is not None:
+                            if i.feeder_name in self.section_feeder_mapping:
+                                self.section_feeder_mapping[i.feeder_name].append(new_section_ID)
+                            else:
+                                self.section_feeder_mapping[i.feeder_name]=[new_section_ID]
+                            if hasattr(i, 'substation_name') and i.substation_name is not None:
+                                self.section_headnode_mapping[i.feeder_name]=i.substation_name
+                        new_converter_string+=new_section_ID+',45,' # 45 is the CYME code for PV devices
+                        new_converter_control_setting_string +=new_section_ID+',45,0,0,' #The controlindex and timetrigger indices are both zero
+                        new_pv_setting_string+=new_section_ID+',M,'+new_section_ID+',DEFAULT,' #Use the default CYME PV configuration for the moment. 
+                        # DGGENERATIONMODEL is not included as this just sets the LoadModelName which is DEFAULT
+
+                        if hasattr(i,temperature) and i.temperature is not None:
+                            new_pv_setting_string+=str(temperature)
+
+
+                        if hasattr(i,rated_power), and i.rated_power is not None:
+                            new_converter_string +=str(i.rated_power)
+                        new_converter_string+=','
+                        if hasattr(i,active_rating) and i.active_rating is not None:
+                            new_converter_string +=str(i.active_rating)
+                        new_converter_string+=','
+                        if hasattr(i,reactive_rating) and i.reactive_rating is not None:
+                            new_converter_string +=str(i.reactive_rating)
+                        new_converter_string+=','
+                        if hasattr(i,min_powerfactor) and i.min_powerfactor is not None:
+                            new_converter_string +=str(i.powerfactor)
+                        new_converter_string+=','
+                        if hasattr(i,fall_limit) and i.fall_limit is not None:
+                            new_converter_string +=str(i.fall_limit)
+                        new_converter_string+=','
+                        if hasattr(i,rise_limit) and i.rise_limit is not None:
+                            new_converter_string +=str(i.rise_limit)
+                        new_converter_string+=','
+                        if (hasattr(i,fall_limit) and i.fall_limit is not None) or (hasattr(i,rise_limit) and i.rise_limit is not None):
+                            new_converter_string+='0' # Using units of % per minute
+                        new_converter_string+=','
+
+                        if hasattr(i,control_type) and i.control_type is not None:
+                            if i.control_type.lower() == 'voltvar_vars_over_watts':
+                                new_converter_control_setting_string+='1'
+                            if i.control_type.lower() == 'voltvar_watts_over_vars':
+                                new_converter_control_setting_string+='0'
+                            if i.control_type.lower() == 'voltvar_fixed_vars':
+                                new_converter_control_setting_string+='2'
+                            if i.control_type.lower() == 'voltvar_novars':
+                                new_converter_control_setting_string+='3'
+                            if i.control_type.lower() == 'voltwatt':
+                                new_converter_control_setting_string+='5'
+                            if i.control_type.lower() == 'watt_powerfactor':
+                                new_converter_control_setting_string+='6'
+                            if i.control_type.lower() == 'powerfactor':
+                                new_converter_control_setting_string+='10'
+                            
+                            new_converter_control_setting_string+=','
+                            if i.control_type.lower() == 'voltvar_fixed_vars' and i.var_injection is not None:
+                                new_converter_control_setting_string+=str(i.var_injection)+',2,' # 2 is the code for the pecentage reactive power available
+                            else:
+                                new_converter_control_setting_string+=',,'
+                            if (i.control_type.lower() == 'voltvar_watts_over_vars' or i.control_type.lower() == 'voltvar_vars_over_watts') and i.voltvar_curve is not None:
+                                new_converter_control_setting_string+=i.voltvar_curve+',,'
+                            elif i.control_type.lower() == 'voltwatt' and i.voltwatt_curve is not None:
+                                new_converter_control_setting_string+=i.voltwatt_curve+',0,' #0 is the code for using the active power rating
+                            elif i.control_type.lower() == 'watt_powerfactor' and i.watt_powerfactor_curve is not None:
+                                new_converter_control_setting_string+=i.watt_powerfactor_curve+',0,' #0 is the code for using the active power rating
+                            else:
+                                new_converter_control_setting_string+=',,'
+
+                            if i.control_type.lower() == 'powerfactor' and i.powerfactor is not None:
+                                new_converter_control_setting_string+=str(i.powerfactor)
+
+                        if hasattr(i,timeseries) and i.timeseries is not None:
+                            new_long_term_dynamics += new_section_ID+',45,3,4,' #45 is for PV, 3 is for insolation curve and 4 is for insolation
+                            #TODO: connect the timeseries data correctly here.
+                    
+
+                    if new_converter_string !='':
+                        converter_string_list.append(new_converter_string)
+                    if new_converter_control_setting_string!='':
+                        converter_control_string_list.append(new_converter_control_setting_string)
+                    if new_pv_setting_string !='':
+                        pv_setting_string_list.append(new_pv_setting_string)
+                    if new_long_term_dynamics!=''
+                        long_term_dynamics_string_list.append(new_long_term_dynamics)
+
+    
+
+
+                                
+
+
+
+
+                    else:
+                        if hasattr(i,'name'):
+                            logger.warning('PV '+i.name+' was not connected and has not been written to CYME')
+                        else:
+                            logger.warning('PV element is unnamed')
+                        
+
+
+
+
+
+
+
+
+            #Write everything to the network file
             #
             # HEADER
             #
@@ -3290,7 +3410,39 @@ class Writer(AbstractWriter):
                 for capacitor_string in capacitor_string_list:
                     f.write(capacitor_string + "\n")
 
-            # Transformers
+
+            #PV attributes
+            #
+            if len(converter_string_list)>0:
+                f.write('\n[CONVERTER]\n')
+                f.write('FORMAT_CONVERTER=DeviceNumber,DeviceType,ConverterRating,ActivePowerRating,ReactivePowerRating,MinimumPowerFactor,PowerFallLimit,PowerRiseLimit,RiseFallUnit\n')
+                for converter_string in converter_string_list:
+                    f.write(converter_string+'\n')
+
+            if len(converter_control_string_list)>0:
+                f.write('\n[CONVERTER CONTROL SETTING]\n')
+                f.write('FORMAT_CONVERTERCONTROLSETTING=DeviceNumber,DeviceType,ControlIndex,TimeTriggerIndex,ControlType,FixedVarInjection,ConverterControlID,PowerReference,PowerFactor\n')
+                for converter_setting in converter_control_string_list:
+                    f.write(converter_setting+'\n')
+
+            if len(pv_setting_string_list)>0:
+                f.write('\n[PHOTOVOLTAIC SETTINGS]\n')
+                f.write('FORMAT_PHOTOVOLTAICSETTING=SectionID,Location,DeviceNumber,EquipmentID,AmbientTemperature\n')
+                for pv_setting in pv_setting_string_list:
+                    f.write(pv_setting+'\n')
+
+            if len(long_term_dynamics_string_list)>0:
+                f.write('\n[LONG TERM DYNAMICS CURVE EXT]\n')
+                f.write('FORMAT_LONGTERMDYNAMICSCURVEEXT=DeviceNumber,DeviceType,AdjustmentSetting,PowerCurveModel,PowerCurveModelId\n')
+                for long_term_dynamics in long_term_dynamics_string_list:
+                    f.write(long_term_dynamics+'\n')
+
+
+
+
+
+
+            #Transformers
             #
             # 2 WINDINGS
             #
