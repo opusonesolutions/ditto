@@ -1236,6 +1236,7 @@ class Writer(AbstractWriter):
                         data_location=i.data_location,
                     )
                     self.timeseries_datasets[i.data_location] = filename
+                    feeder_text_map[substation_name+'_'+feeder_name] = txt
 
                 elif (
                     hasattr(i, "data_location")
