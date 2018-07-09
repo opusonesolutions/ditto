@@ -1,7 +1,7 @@
 import os
 
 from ditto.writers.gridlabd.write import writer as Writer
-from ditto.readers.Synergi.SynergiDittoReader_01 import reader as Reader
+from ditto.readers.Synergi.SynergiDittoReader_Debug import reader as Reader
 
 from ditto.store import Store
 from tests import ditto_dir
