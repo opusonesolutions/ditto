@@ -270,6 +270,10 @@ class Reader(AbstractReader):
         SwitchType = self.get_data("InstSwitches", "SwitchType")
         SwitchIsOpen = self.get_data("InstSwitches", "SwitchIsOpen")
         SwitchName = self.get_data("DevSwitches", "SwitchName")
+        Switch_index_map = {}
+        for i in range(len(SwitchName)):
+            Switch_index_map[SwitchName[i]] = i
+
         ContinuousCurrentRating_switch = self.get_data(
             "DevSwitches", "ContinuousCurrentRating"
         )
@@ -659,16 +663,17 @@ class Reader(AbstractReader):
 
             # Switch
             if switch_sectionID is not None and obj in switch_sectionID.values:
-                idd = np.argwhere(switch_sectionID.values == obj).flatten()
+                idd_db= np.argwhere(switch_sectionID.values == obj).flatten()
 
                 # Set the is_switch flag to True
                 api_line.is_switch = 1
 
                 # Get the current ratings (to be used in the wires)
-                if len(idd) == 1:
-                    eqt_rating = ContinuousCurrentRating_switch[idd[0]]
-                    eqt_interrupting_rating = EmergencyCurrentRating_switch[idd[0]]
-                    eqt_open = SwitchIsOpen[idd[0]]
+                if len(idd_db) == 1:
+                    idd_warehouse = Switch_index_map[SwitchType[idd_db[0]]]
+                    eqt_rating = ContinuousCurrentRating_switch[idd_warehouse]
+                    eqt_interrupting_rating = EmergencyCurrentRating_switch[idd_warehouse]
+                    eqt_open = SwitchIsOpen[idd_db[0]]
 
             # Fuse
             if fuse_sectionID is not None and obj in fuse_sectionID.values:
