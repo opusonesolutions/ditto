@@ -2958,7 +2958,7 @@ class Writer(AbstractWriter):
             if wire.nameclass in self.all_wires:
                 result["conductor_list"][-1]["Wire"] = wire.nameclass
             elif wire.nameclass in self.all_cables:
-                pass # Handled by cable writer
+                result["conductor_list"][-1]["CNCable"] = wire.nameclass
             else:
                 raise ValueError("Wire {name} not found.".format(name=wire.nameclass))
 
