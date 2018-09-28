@@ -2436,7 +2436,7 @@ class Writer(AbstractWriter):
                                 # Otherwise, there is nothing to do unless the dictionary we previously has is not
                                 # exactly the one we currently have
                                 else:
-                                    if self.all_cables[wire.nameclass] != parsed_wire:
+                                    if self.all_cables[wire.nameclass] != parsed_cable:
                                         self.all_cables[
                                             wire.nameclass + "_" + str(cnt)
                                         ] = parsed_cable
@@ -2957,6 +2957,8 @@ class Writer(AbstractWriter):
             result["conductor_list"][-1]["cond"] = cond
             if wire.nameclass in self.all_wires:
                 result["conductor_list"][-1]["Wire"] = wire.nameclass
+            elif wire.nameclass in self.all_cables:
+                pass # Handled by cable writer
             else:
                 raise ValueError("Wire {name} not found.".format(name=wire.nameclass))
 
