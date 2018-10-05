@@ -2149,6 +2149,8 @@ class Writer(AbstractWriter):
                 #
                 # For overhead (and undefined lines...)
                 if i.line_type != "underground":
+                    if len(i.wires) == 0:
+                        use_linecodes = True
                     for wire in i.wires:
                         # If we are missing the position of at least one wire, default to linecodes
                         if wire.X is None or wire.Y is None:
@@ -2164,6 +2166,8 @@ class Writer(AbstractWriter):
                             use_linecodes = True
                 # For underground lines, we need a lot of data...
                 else:
+                    if len(i.wires) == 0:
+                        use_linecodes = True # For empty lines
                     for wire in i.wires:
                         # If we are missing the position of at least one wire, default to linecodes
                         if wire.X is None or wire.Y is None:
@@ -2835,6 +2839,11 @@ class Writer(AbstractWriter):
         :rtype: dict
         """
         result = {}
+        # Insulator thickness
+        if hasattr(wire,"insulation_thickness") and wire.insulation_thickness is not None:
+            result["InsLayer"] = wire.insulation_thickness
+            if hasattr(wire,"diameter") and wire.diameter is not None:
+                result["DiaIns"] = wire.diameter+2*wire.insulation_thickness
 
         # Number of concentric neutral strands
         if (
@@ -2912,12 +2921,12 @@ class Writer(AbstractWriter):
         # GMR
         if hasattr(wire, "gmr") and wire.gmr is not None:
             result["GMRac"] = wire.gmr
-            result["GMRunits"] = "km"  # Let OpenDSS know we are in meters here
+            result["GMRunits"] = "m"  # Let OpenDSS know we are in meters here
 
         # Diameter
         if hasattr(wire, "diameter") and wire.diameter is not None:
             result["Diam"] = wire.diameter
-            result["Radunits"] = "km"  # Let OpenDSS know we are in meters here
+            result["Radunits"] = "m"  # Let OpenDSS know we are in meters here
 
         # Ampacity
         if hasattr(wire, "ampacity") and wire.ampacity is not None:
@@ -2949,7 +2958,7 @@ class Writer(AbstractWriter):
         result["nconds"] = len(wire_list)
         phase_wires = [w for w in wire_list if w.phase in ["A", "B", "C"]]
         result["nphases"] = len(phase_wires)
-        result["units"] = "km"
+        result["units"] = "m"
         result["conductor_list"] = []
         for cond, wire in enumerate(wire_list):
             result["conductor_list"].append({})
