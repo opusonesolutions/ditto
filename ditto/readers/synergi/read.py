@@ -369,6 +369,7 @@ class Reader(AbstractReader):
         CableConNeutResistance_PerLUL = self.get_data("DevConductors", "CableConNeutResistance_PerLUL")
         CableConNeutStrandCount = self.get_data("DevConductors", "CableConNeutStrandCount")
         CableDiamOutside = self.get_data("DevConductors", "CableDiamOutside_SUL")
+        CableDiamOverInsul = self.get_data("DevConductors", "CableDiamOverInsul_SUL")
 
         conductor_mapping = {}
         for idx, cond in enumerate(ConductorName):
@@ -385,7 +386,9 @@ class Reader(AbstractReader):
                 "CableConNeutStrandDiameter_SUL": CableConNeutStrandDiameter_SUL[idx],
                 "CableConNeutResistance_PerLUL": CableConNeutResistance_PerLUL[idx],
                 "CableConNeutStrandCount": CableConNeutStrandCount[idx],
-                "CableDiamOutside": CableDiamOutside[idx]
+                "CableDiamOutside": CableDiamOutside[idx],
+                "CableDiamOverInsul": CableDiamOverInsul[idx],
+
             }
 
         ## Loads #############
@@ -1079,24 +1082,21 @@ class Reader(AbstractReader):
                         ]["InterruptCurrentRating"]
 
                     # Set the resistance of the conductor
-                    # TODO: Change this once resistance is the per unit length resistance
+                    # Represented in Ohms per meter
                     #
                     if api_line.length is not None:
                         api_wire.resistance = (
-                            conductor_mapping[conductor_name_raw]["CableResistance"]
-                            * api_line.length
-                            * 1.0
-                            / 1609.34
+                            conductor_mapping[conductor_name_raw]["CableResistance"] / 1609.34
                         )
 
                     # Check outside diameter is greater than conductor diameter before applying concentric neutral settings
                     if conductor_mapping[conductor_name_raw]["CableDiamOutside"] > conductor_mapping[conductor_name_raw]["CableDiamConductor"]:
-                        if api_line.length is not None:
-                            api_wire.concentric_neutral_resistance = conductor_mapping[conductor_name_raw]["CableConNeutResistance_PerLUL"] * api_line.length*1.0/160934
+                        api_wire.concentric_neutral_resistance = conductor_mapping[conductor_name_raw]["CableConNeutResistance_PerLUL"] /160934
                         api_wire.concentric_neutral_diameter = conductor_mapping[conductor_name_raw]["CableConNeutStrandDiameter_SUL"]*0.0254 # multiplied by short unit length scale
                         api_wire.concentric_neutral_gmr = conductor_mapping[conductor_name_raw]["CableConNeutStrandDiameter_SUL"]/2.0*0.7788*0.0254 # multiplied by short unit length scale. Derived as 0.7788 * radius as per OpenDSS default
                         api_wire.concentric_neutral_outside_diameter = conductor_mapping[conductor_name_raw]["CableDiamOutside"]* 0.0254 # multiplied by short unit length scale
                         api_wire.concentric_neutral_nstrand = int(conductor_mapping[conductor_name_raw]["CableConNeutStrandCount"])
+                        api_wire.insulation_thickness = (conductor_mapping[conductor_name_raw]["CableDiamOverInsul"]- conductor_mapping[conductor_name_raw]["CableDiamConductor"])/2.0*0.0254
 
 
                         
